@@ -8,14 +8,6 @@ from fastmcp.utilities.types import Image
 from mcp.types import ImageContent
 from typing import Any, Dict
 
-# localhost
-#/5reAwjAniUsgczI/ggoVxqQYPoKwzsV8nVK8jJD
-#Ri8/Htd9igtWiS/yKHFgeBHFxuhEMOhXEns9lvtd
-
-# tweekit.io API key and secret
-#+eyzMhg3XMP8ErS9L1hfUwUTQN9fh/nTtZOrajZD
-#SltST77UAWPyoIbXgqD6weQDigdcJbOiDS7414uK
-
 BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
 #BASE_URL = "http://localhost:16377/api/image/"
 
