@@ -306,7 +306,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = "==2.8.0" },
-    { name = "httpx", specifier = "==0.28.1" },
+    { name = "httpx", specifier = ">=0.28.1" },
 ]
 
 [[package]]
