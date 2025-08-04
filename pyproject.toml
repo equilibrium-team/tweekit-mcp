@@ -1,0 +1,9 @@
+[project]
+name = "maitrix-mcp"
+version = "0.1.0"
+description = "Maitrix/TweekIT MCP server on Cloud Run"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp==2.8.0",
+    "httpx>=0.28.1",
+]
