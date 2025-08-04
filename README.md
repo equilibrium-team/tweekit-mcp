@@ -54,8 +54,8 @@ Description: Converts a base64-encoded document to the specified output format.
 Parameters:
 - apiKey: API key for authentication.
 - apiSecret: API secret for authentication.
-- inext: Input file extension (e.g., jpg, png).
-- outfmt: Desired output format (e.g., pdf, png).
+- inext: Input file extension (e.g., jpg, png, doc, docx, etc.).
+- outfmt: Desired output format (e.g., jpg, pdf, png).
 - blob: Base64-encoded document data.
 
 Optional:
@@ -64,8 +64,9 @@ Optional:
 - page: Page number to convert (for multi-page documents, default: 1).
 - bgcolor: Background color for transparent documents (default: empty string - leave transparent pixels as is).
 
+The image of the specified page (or page 1) will be returned in the response with the correct content type set.
 
-In addition to Docker, it can also be run simply by doing 'uv run server.py'.
+In addition to Docker, it can run simply by doing 'uv run server.py'.
 
 The server will be accessible at http://localhost:8080.
 
