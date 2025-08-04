@@ -49,29 +49,25 @@ apiSecret: API secret for authentication.
 Document Conversion:
 
 Endpoint: /convert
-Description: Converts a base64-encoded document to the specified output format - Parameters:
-apiKey: API key for authentication.
-apiSecret: API secret for authentication.
-inext: Input file extension (e.g., jpg, png).
-outfmt: Desired output format (e.g., pdf, png).
-blob: Base64-encoded document data.
+Description: Converts a base64-encoded document to the specified output format.
+
+Parameters:
+- apiKey: API key for authentication.
+- apiSecret: API secret for authentication.
+- inext: Input file extension (e.g., jpg, png).
+- outfmt: Desired output format (e.g., pdf, png).
+- blob: Base64-encoded document data.
+
 Optional:
-width: Desired width of the output (default: 0 for no resizing).
-height: Desired height of the output (default: 0 for no resizing).
-page: Page number to convert (for multi-page documents, default: 1).
-bgcolor: Background color for transparent documents (default: empty string - leave transparent pixels as is).
+- width: Desired width of the output (default: 0 for no resizing).
+- height: Desired height of the output (default: 0 for no resizing).
+- page: Page number to convert (for multi-page documents, default: 1).
+- bgcolor: Background color for transparent documents (default: empty string - leave transparent pixels as is).
 
-Building with Docker
-To build and run the project using Docker:
 
-Build the Docker image:
-
-Run the Docker container:
+In addition to Docker, it can also be run simply by doing 'uv run server.py'.
 
 The server will be accessible at http://localhost:8080.
-
-Logging
-The server uses Python's logging module to log messages. Logs are displayed in the following format:
 
 Contributing
 Contributions are welcome! Feel free to open issues or submit pull requests.
