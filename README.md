@@ -33,15 +33,20 @@ To start the server locally:
 
 The server will start on the specified port (default: 8080).
 
-API Endpoints
-Version API:
+#Resources
 
 Endpoint: /version
-Description: Fetches the current version of the TweekIT API.
-Supported File Formats:
+
+Description:
+Fetches the current version of the TweekIT API. Takes 
+
+#Tools
 
 Endpoint: /doctype
-Description: Retrieves a list of supported input file formats or maps a file extension to its document type. If the document type field returned is empty, then the format isn't supported for reading.
+
+Description:
+Retrieves a list of supported input file formats or maps a file extension to its document type. If the document type field returned is empty, then the format isn't supported for reading.
+
 Parameters:
 extension: File extension (e.g., jpg, docx). Optional, defaults to '*'. (return all supported input document types).
 apiKey: API key for authentication.
