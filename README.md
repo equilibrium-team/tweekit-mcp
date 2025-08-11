@@ -33,14 +33,14 @@ To start the server locally:
 
 The server will start on the specified port (default: 8080).
 
-#Resources
+##Resources
 
 Endpoint: /version
 
 Description:
-Fetches the current version of the TweekIT API. Takes 
+Fetches the current version of the TweekIT API. Takes no parameters.
 
-#Tools
+##Tools
 
 Endpoint: /doctype
 
