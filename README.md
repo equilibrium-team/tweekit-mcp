@@ -33,16 +33,16 @@ To start the server locally:
 
 The server will start on the specified port (default: 8080).
 
-### Resources
+## Resources
 
-Endpoint: /version
+### /version
 
 Description:
 Fetches the current version of the TweekIT API. Takes no parameters.
 
-### Tools
+## Tools
 
-Endpoint: /doctype
+### /doctype
 
 Description:
 Retrieves a list of supported input file formats or maps a file extension to its document type. If the document type field returned is empty, then the format isn't supported for reading.
@@ -52,7 +52,8 @@ Parameters:
 - apiKey: API key for authentication.
 - apiSecret: API secret for authentication.
 
-Endpoint: /convert
+### /convert
+
 Description: Converts a base64-encoded document to the specified output format.
 
 Parameters:
@@ -69,7 +70,7 @@ Optional:
 - page: Page number to convert (for multi-page documents, default: 1).
 - bgcolor: Background color for transparent documents (default: empty string - leave transparent pixels as is).
 
-The image of the specified page (or page 1) will be returned in the response with the correct content type set.
+The image of the specified page (or page 1) will be returned in the response with the correct content type set. If noRasterize is set to true and all other conditions are met, a PDF of the contents of the entire submitted document will be returned.
 
 In addition to Docker, it can run simply by doing 'uv run server.py'.
 
