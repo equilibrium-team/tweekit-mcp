@@ -59,6 +59,7 @@ Parameters:
 - blob: Base64-encoded document data.
 
 Optional:
+- noRasterize: If the input document is a text-based document (doc, odt, xls, etc.) and the output format is set to 'pdf' with this parameter set to true, instead of rasterizing and doing image operations on the document, all pages will be converted to a PDF and returned. If the output format is not 'pdf', this parameter is ignored. Defaults to false. 
 - width: Desired width of the output (default: 0 for no resizing).
 - height: Desired height of the output (default: 0 for no resizing).
 - page: Page number to convert (for multi-page documents, default: 1).
