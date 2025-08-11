@@ -41,9 +41,9 @@ Description: Fetches the current version of the TweekIT API.
 Supported File Formats:
 
 Endpoint: /doctype
-Description: Retrieves a list of supported file formats or maps a file extension to its document type.
+Description: Retrieves a list of supported input file formats or maps a file extension to its document type. If the document type field returned is empty, then the format isn't supported for reading.
 Parameters:
-ext: File extension (e.g., jpg, docx).
+extension: File extension (e.g., jpg, docx). Optional, defaults to '*'. (return all supported input document types).
 apiKey: API key for authentication.
 apiSecret: API secret for authentication.
 Document Conversion:
