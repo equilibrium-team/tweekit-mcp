@@ -183,7 +183,7 @@ Production for executing conversion requests:
 
 - [**https://mcp-tweekit-728625953614.us-west1.run.app/mcp/convert**](https://mcp-tweekit-728625953614.us-west1.run.app/mcp/convert)
 
-### MCP Tool Installation
+### MCP Installation
 
 You can run the TweekIT MCP server locally or connect to a hosted instance. The local option is recommended for development and testing.
 
@@ -268,7 +268,44 @@ TweekIT does not store your files persistently.
 
 ## MCP Reference
 
+### Resources
 
+#### /version
+
+Description:
+Fetches the current version of the TweekIT API. Takes no parameters.
+
+### Tools
+
+#### /doctype
+
+Description:
+Retrieves a list of supported input file formats or maps a file extension to its document type. If the document type field returned is empty, then the format isn't supported for reading.
+
+Parameters:
+- extension: File extension (e.g., jpg, docx). Optional, defaults to '*'. (return all supported input document types).
+- apiKey: API key for authentication.
+- apiSecret: API secret for authentication.
+
+#### /convert
+
+Description: Converts a base64-encoded document to the specified output format.
+
+Parameters:
+- apiKey: API key for authentication.
+- apiSecret: API secret for authentication.
+- inext: Input file extension (e.g., jpg, png, doc, docx, etc.).
+- outfmt: Desired output format (e.g., jpg, pdf, png).
+- blob: Base64-encoded document data.
+
+Optional:
+- noRasterize: If the input document is a text-based document (doc, odt, xls, etc.) and the output format is set to 'pdf' with this parameter set to true, instead of rasterizing and doing image operations on the document, all pages will be converted to a PDF and returned. If the output format is not 'pdf', this parameter is ignored. Defaults to false. 
+- width: Desired width of the output (default: 0 for no resizing).
+- height: Desired height of the output (default: 0 for no resizing).
+- page: Page number to convert (for multi-page documents, default: 1).
+- bgcolor: Background color for transparent documents (default: empty string - leave transparent pixels as is).
+
+The image of the specified page (or page 1) will be returned in the response with the correct content type set. If noRasterize is set to true and all other conditions are met, a PDF of the contents of the entire submitted document will be returned.
 
 ## REST API Reference
 
