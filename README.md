@@ -99,7 +99,7 @@ Create your free TweekIT account and get started with 10,000 API calls included 
 
 ### Step 2: Choose Your Authentication Method
 
-TweekIT supports multiple authentication methods. However only the Key/Secret pair methos will work with the MCP integration.
+TweekIT supports multiple authentication methods. However ONLY the Key/Secret pair method will work with the MCP integration.
 
 - **API Key and Secret** – Required for MCP production use, more secure and easier to control access
 
