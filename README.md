@@ -56,8 +56,8 @@ The entire process happens in seconds, and your workflow never sees an incompati
 - [Server and Hosting](#server-and-hosting)
 - [Rate Limits and Pricing](#rate-limits-and-pricing)
 - [Core Concepts](#core-concepts)
-- [API Reference (MCP-Ready)](#api-reference-mcp-ready)
-- [Widget API Integration](#widget-api-integration)
+- [MCP API Reference](#mcp-reference)
+- [REST API Reference](#rest-api-reference)
 - [Use Cases](#use-cases)
 - [Demo + Show Code](#demo--show-code)
 - [Error Handling and Troubleshooting](#error-handling-and-troubleshooting)
@@ -107,7 +107,9 @@ You will find these values in your account dashboard after sign up. Keep them sa
 
 ### Step 3: Make Your First API Call
 
-Below is a minimal working json example that uploads an image, previews the transformation, and downloads the result. This example uses API Key and Secret authentication.
+Below is a minimal working json example that sends an image with a basic resize operation, previews the transformation, and returns the result. This example uses API Key and Secret authentication.
+
+The JSON was captured from the use of MCP Inspector with the publicly available MCP server.
 
 
 ```json
@@ -239,203 +241,38 @@ Your MCP client should:
 2. Surface a clear error message to the user.
 3. Recommend upgrading the plan immediately to continue.
 
-Example error payload:
-
-```json
-{
-  "error": "rate_limit_exceeded",
-  "message": "You have reached your 10,000 call monthly limit."
-}
-```
-
 ## Core Concepts
 
 Understanding these core concepts will help you get the most out of TweekIT in an MCP workflow.
 
 ### Request includes Base-64 content → Response include Base-64 Results
 
-TweekIT MCP Server uses this simple, stateless and secure
+TweekIT MCP Server uses this simple, stateless and secure pipeline for document processing requests.
 
 ### Transformations
 
 TweekIT supports a wide range of transformations, applied at preview time:
 
 - **Resize** by width and height (if send only one parameter, the other will be automatically calculated to maintain aspect ratio)
-- **Crop** by coordinates or aspect ratio (coming soon)
-- **Reformat** to a different file type
-- **Alpha channel** transparency control
+- **OutFormat** change the file format to a different file type
 - **Background color** fills for transparent or padded areas
-- **No Rasterize** fills for transparent or padded areas
-
-Multiple transformations can be applied in a single request.
+- **NoRasterize** When combined with a PDF output format, converts entire textual documents into a PDF file for upstream AI ingest.
 
 ### Stateless Processing
 
 TweekIT does not store your files persistently.
 
-- Every transformation request works from the uploaded file *in memory*.
-- Once the DocId expires, sozinho the file and all transformation data are purged.
+- Job folder and temp storage are purged after each request.
 - This design ensures minimal storage overhead and stronger privacy for sensitive files.
-- Data in transit is encrypted all ways via SSL.
+- Data in transit is encrypted via SSL.
 
-## API Reference (MCP-Ready)
+## MCP Reference
 
-TweekIT provides both REST API endpoints and Widget API methods that can be accessed directly or have a critical subset in the MCP server. All methods require authentication (see Section 3: Authentication).
 
-### Upload File
 
-**REST Endpoint**
+## REST API Reference
 
-`POST /api/image/upload`
-
-**Purpose**  
-Uploads a single file and returns a unique DocId for use in transformations and downloads.
-
-**Note: The MCP server does not require an upload endpoint because the document is sent in Base-64 form with every conversion request. (See size limits in the pricing plans)**
-
-**Node.js Example**
-
-```javascript
-const fetch = require('node-fetch');
-const fs = require('fs');
-const FormData = require('form-data');
-
-const headers = {
-  "apikey": "{Your API Key}",
-  "apisecret": "{Your API Secret}"
-};
-
-async function uploadFile(filePath, fileName) {
-  const url = 'https://www.tweekit.io/tweekit/api/image/upload';
-  const formData = new FormData();
-  formData.append("name", fileName);
-  formData.append("file", fs.createReadStream(filePath));
-  const response = await fetch(url, { method: 'POST', headers, body: formData });
-  const docID = response.headers.get('x-tweekit-docid');
-  return docID;
-}
-```
-
-**Example Response**
-
-```json
-{
-  "docId": "81736373272E49248519DE8C203A6001"
-}
-```
-
-### Preview / Transform File
-
-**REST Endpoint**
-
-`POST /api/image/preview/{docId}`
-
-`GET  /api/image/preview/{docId}`
-
-**Purpose**  
-Applies transformations to the uploaded file and returns the preview image.
-
-**Parameters**
-
-- `width` (integer): Scale output image width.
-- `height` (integer): Scale output image height.
-- `fmt` (string): Output format (jpg, png, webp, gif, etc.).
-- `bgcolor` (string): Hex or color name for background fill.
-- `page` (integer): Page number for multi-page formats.
-- `cropX`, `cropY`, `cropWidth`, `cropHeight` (integers): Crop coordinates.
-
-**Node.js Example**
-
-```javascript
-async function previewImage(docId) {
-  const url = `https://www.tweekit.io/tweekit/api/image/preview/${docId}`;
-  const options = {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json;charset=UTF-8' },
-    body: JSON.stringify({ width: 300, height: 300, fmt: 'png', bgcolor: '#FFFFFF' })
-  };
-  const response = await fetch(url, options);
-  return await response.buffer();
-}
-```
-
-### Download File
-
-**REST Endpoint**
-
-`GET /api/image/{docId}`
-
-**Purpose**  
-Retrieves the fully transformed file.
-
-**Supported Output Formats**
-
-- JPEG (`.jpg`)
-- PNG (`.png`)
-- WebP (`.webp`)
-- GIF (`.gif`)
-- TIFF (`.tif`)
-- PDF (`.pdf`) (first page image render when image is requested, or complete complex PDF can be generated from any file with complex data such as .docx, .doc, .ppt, .pptx, etc.)
-
-**Example**
-
-```javascript
-async function downloadFile(docId, outputPath) {
-  const url = `https://www.tweekit.io/tweekit/api/image/${docId}`;
-  const response = await fetch(url, { headers });
-  const buffer = await response.buffer();
-  fs.writeFileSync(outputPath, buffer);
-}
-```
-
-### Other Methods
-
-#### Widget API
-
-- **`getParams()`** – Returns the current transformation parameters.
-- **`reset()`** – Resets the widget state and clears the current file.
-- **`result()`** – Retrieves the transformed image as a Blob.
-
-#### Event Listeners
-
-- **`render`** – Triggered when the widget finishes rendering.
-- **`update`** – Fired when transformation parameters change.
-- **`propertychange`** – Fired when widget properties are updated.
-
-## Widget API Integration
-
-TweekIT offers a JavaScript-based Widget API that can be embedded into MCP webviews for interactive media processing. The widget provides an end-user interface for uploading, previewing, and transforming files without writing REST calls directly.
-
-### When to Use Widget vs REST
-
-- **Use the Widget API** when you want an interactive visual interface for users to manipulate images directly inside your MCP environment.
-- **Use the REST API** when you need automated or backend processing without direct user interaction.
-- Many workflows combine both: the widget handles interactive cropping or resizing, then REST endpoints finalize transformations or run batch processing.
-
-### Constructor Parameters
-
-The widget is created by instantiating `Tweekit(selector, options)`.
-
-**`selector`**  
-A CSS selector pointing to the HTML element that will contain the widget.
-
-**`options`** (object)
-
-| Parameter    | Type    | Description                                               |
-|--------------|---------|-----------------------------------------------------------|
-| `appId`      | string  | Application ID for authentication                         |
-| `message`    | string  | Displayed when there is no image loaded                   |
-| `headers`    | object  | Name-value pairs for HTTP headers (e.g., API Key and Secret) |
-| `cropOnRender` | boolean | Whether to display the crop tool immediately after rendering |
-| `cropWidth`  | number  | Initial width of the crop tool                            |
-| `cropHeight` | number  | Initial height of the crop tool                           |
-
-### Properties & Methods
-
-- **`getParams()`** – Returns the current transformation parameters.
-- **`reset()`** – Clears the widget state and removes the loaded file.
-- **`result()`** – Returns the transformed file as a Blob.
-- **`render()`** – Forces the widget to re-render with current parameters.
+Please refer to the documentation at (https://tweekit.io/docs/rest-api/) to get an understanding of how the MCP server talks to the TweekIT REST API to proxy MCP requests to TweekIT.
 
 ## Use Cases
 
@@ -443,17 +280,7 @@ Below are common workflows where TweekIT improves reliability and speed in media
 
 ### 1. Employee Headshot Automation
 
-Automatically crop and resize employee photos into a consistent headshot format.
-
-**REST Example**
-
-```bash
-curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
-  -H "apikey: {Your API Key}" \
-  -H "apisecret: {Your API Secret}" \
-  -H "Content-Type: application/json;charset=UTF-8" \
-  -d '{"width": 300, "height": 300, "cropWidth": 300, "cropHeight": 300, "fmt": "png"}'
-```
+Automatically crop and resize images into a consistent size and format.
 
 **MCP Example**
 
@@ -480,19 +307,19 @@ curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
 }
 ```
 
-### 2. KYC Photo Ingestion and Normalization
-
-Process identity document photos into standardized formats for automated verification.
-
-**REST Example**
+**Equivalent REST Example (requires a separate upload step)**
 
 ```bash
 curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
   -H "apikey: {Your API Key}" \
   -H "apisecret: {Your API Secret}" \
   -H "Content-Type: application/json;charset=UTF-8" \
-  -d '{"width": 600, "height": 400, "fmt": "webp", "bgcolor": "#FFFFFF"}'
+  -d '{"width": 30, "height": 30, "fmt": "png"}'
 ```
+
+### 2. KYC Photo Ingestion and Normalization
+
+Process identity document photos into standardized formats for automated verification.
 
 **MCP Example**
 
@@ -517,19 +344,19 @@ curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
 }
 ```
 
-### 3. Social Media and E-Commerce Image Resizing
-
-Generate platform-specific product images with correct aspect ratios and background fills.
-
-**REST Example**
+**Equivalent REST Example**
 
 ```bash
 curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
   -H "apikey: {Your API Key}" \
   -H "apisecret: {Your API Secret}" \
   -H "Content-Type: application/json;charset=UTF-8" \
-  -d '{"width": 1080, "height": 1080, "fmt": "jpg", "bgcolor": "#FFFFFF"}'
+  -d '{"width": 600, "height": 400, "fmt": "webp", "bgcolor": "#FFFFFF"}'
 ```
+
+### 3. Social Media and E-Commerce Image Resizing
+
+Generate platform-specific product images with correct aspect ratios and background fills.
 
 **MCP Example**
 
@@ -554,19 +381,20 @@ curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
 }
 ```
 
-### 4. Cross-Platform Asset Conversion
-
-Convert files between formats for compatibility across different tools and workflows.
-
-**REST Example**
+**Equivalent REST Example**
 
 ```bash
 curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
   -H "apikey: {Your API Key}" \
   -H "apisecret: {Your API Secret}" \
   -H "Content-Type: application/json;charset=UTF-8" \
-  -d '{"fmt": "webp"}'
+  -d '{"width": 1080, "height": 1080, "fmt": "jpg", "bgcolor": "#FFFFFF"}'
 ```
+
+
+### 4. Cross-Platform Asset Conversion
+
+Convert files between formats for compatibility across different tools and workflows.
 
 **MCP Example**
 
@@ -588,19 +416,19 @@ curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
 }
 ```
 
-### 5. Multi-page Document conversion to PDF
-
-Convert complex document or legacy filetypes from original formats into PDF files for compatibility into your current AI workflow.
-
-**REST Example (TweekIT API)**
+**Equivalent REST Example**
 
 ```bash
 curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
   -H "apikey: {Your API Key}" \
   -H "apisecret: {Your API Secret}" \
   -H "Content-Type: application/json;charset=UTF-8" \
-  -d '{"fmt": "pdf", noRasterize: true}'
+  -d '{"fmt": "webp"}'
 ```
+
+### 5. Multi-page Document conversion to PDF
+
+Convert complex document or legacy filetypes from original formats into PDF files for compatibility into your current AI workflow.
 
 **MCP Example**
 
@@ -621,6 +449,16 @@ curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
   "jsonrpc": "2.0",
   "id": 4
 }
+```
+
+**Equivalent REST Example**
+
+```bash
+curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
+  -H "apikey: {Your API Key}" \
+  -H "apisecret: {Your API Secret}" \
+  -H "Content-Type: application/json;charset=UTF-8" \
+  -d '{"fmt": "pdf", noRasterize: true}'
 ```
 
 ## Demo + Show Code
@@ -684,20 +522,6 @@ Building robust MCP workflows with TweekIT means anticipating and handling commo
 
 ### Common Issues
 
-**Expired DocId**
-
-- **Cause**: The DocId has exceeded its 20-minute lifespan.
-- **Resolution**: Re-upload the file to obtain a new DocId.
-- **HTTP Status**: `404 Not Found`
-- **Error Example**:
-
-  ```json
-  {
-    "error": "docid_expired",
-    "message": "The DocId has expired. Please upload the file again."
-  }
-  ```
-
 **Bad Format**
 
 - **Cause**: The file format is unsupported or the requested output format is invalid.
@@ -743,22 +567,6 @@ When using TweekIT in an MCP context:
 ## Advanced Topics
 
 For teams pushing TweekIT beyond simple transformations, these advanced techniques can help you integrate deeper into AI pipelines, improve performance, and harden security.
-
-### Chaining Transformations
-
-You can apply multiple transformations in a single request by including all parameters in the preview or transform call. This reduces network round trips and ensures the DocId lifespan is used efficiently.
-
-**Example**
-
-```bash
-curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
-  -H "apikey: {Your API Key}" \
-  -H "apisecret: {Your API Secret}" \
-  -H "Content-Type: application/json;charset=UTF-8" \
-  -d '{"width": 512, "height": 512, "fmt": "webp", "cropWidth": 400, "cropHeight": 400, "bgcolor": "#000000"}'
-```
-
-**Why**: Useful when you need to crop, resize, and reformat in one step. ***Crop is only available when using the widget currently.***
 
 ### Integrating with AI Pipelines
 
