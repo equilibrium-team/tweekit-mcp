@@ -35,7 +35,7 @@ The entire process happens in seconds, and your workflow never sees an incompati
 
 ### Key Capabilities
 
-- Supports **450+** file types for seamless ingestion and conversion, **leveraging a core engine refined over two decades to handle dynamic imaging and video delivery.**
+- Supports **400+** file types for seamless ingestion and conversion, **leveraging a core engine refined over two decades to handle dynamic imaging and video processing.**
 - Stateless and API first design for fast, scalable integrations
 - Widget or REST API access to fit any application architecture
 - Enterprise grade security with secure key handling and short lived asset storage
@@ -95,58 +95,42 @@ The entire process happens in seconds, and your workflow never sees an incompati
 ### Step 1: Sign Up
 
 Create your free TweekIT account and get started with 10,000 API calls included at no cost.  
-[Pricing and Signup here](https://www.tweekit.io/) to access your API credentials and start using the service.
+[Pricing and Signup here](https://www.tweekit.io/) to generate your API credentials in the MANAGE ACCOUNT page and start using the service.
 
 ### Step 2: Choose Your Authentication Method
 
-TweekIT supports multiple authentication methods. Both work with the MCP integration.
+TweekIT supports multiple authentication methods. However only the Key/Secret pair methos will work with the MCP integration.
 
-- **AppID** – Fastest way to get started for quick tests and prototyping
-- **API Key and Secret** – Recommended for production use, more secure and easier to control access
+- **API Key and Secret** – Required for MCP production use, more secure and easier to control access
 
 You will find these values in your account dashboard after sign up. Keep them safe and never expose them in client-side code.
 
 ### Step 3: Make Your First API Call
 
-Below is a minimal working Node.js example that uploads an image, previews the transformation, and downloads the result. This example uses API Key and Secret authentication.
+Below is a minimal working json example that uploads an image, previews the transformation, and downloads the result. This example uses API Key and Secret authentication.
 
-```javascript
-const fetch = require('node-fetch');
-const fs = require('fs');
-const FormData = require('form-data');
 
-const headers = {
-  apikey: '{Your API Key}',
-  apisecret: '{Your API Secret}'
-};
-
-async function uploadFile(filePath, fileName) {
-  const url = 'https://www.tweekit.io/tweekit/api/image/upload';
-  const formData = new FormData();
-  formData.append('name', fileName);
-  formData.append('file', fs.createReadStream(filePath));
-  const response = await fetch(url, { method: 'POST', headers, body: formData });
-  const docID = response.headers.get('x-tweekit-docid');
-  return docID;
+```json
+{
+  "method": "tools/call",
+  "params": {
+    "name": "convert",
+    "arguments": {
+      "apiKey": "{Your TweekIT API key}",
+      "apiSecret": "{Your TweekIT API secret}",
+      "inext": "png",
+      "outfmt": "png",
+      "blob": "iVBORw0KGgoAAAANSUhEUgAAABwAAAA6CAYAAACj+Dm/AAAABmJLR0QAAAAAAAD5Q7t/AAAACXBIWXMAAAsSAAALEgHS3X78AAAAHnRFWHRTb2Z0d2FyZQBFcXVpbGlicml1bSBNZWRpYVJpY2h7w4AAAAAB30lEQVRYhe2Xv0vDQBTHP4rQTRGhLqKiYt38MaggKIi46e6im2Rw7FJw7NAh4uAi+h/oIDgKnR3VQZROKiLYrZtOOiQH1+RevJQ0INwXQt7de7lP++7l7tJTq9XIU7250hzQAR3QAR3QAXMH3gM/wG0ewHtgNrSXgXo3gXUNprTSLaAPrBv6C4DXDeBBgm8ha+ArwT+RNJkl8BoY/SNmKiugB2xaxA1nBayQnEolY+GkBdqkUlescNIAPWBL8D0I/bHCSQOsCP3fwFx4jypWOLbApFRehfdPgy9WODbApKpsATuh/WHwxwrHBphUlRea/SLErKUBniGn8g3Y19qPQtx4GuBugu8y0q4KcRN6oy9hwFvkVDaAfoKtaQgYBAaE2KINsE6wkUqaDi9b+UBZAn5ht3Sl0bwyTHOYNQxgRAIad+kMNJY3sAAcQvscesQPQ7qaBPP7Bbxr/XeaXab9BKdrMQrcS4AdhYPZ6EkArkJ7SucNQRC8c7YwCNZW084xAPgKeI25Or+B4xQwpWehf0MBl4SAG+C0A6D0zIwCFg3OJrDdAUwBTaeAggI2DM6TDmFKcwT7pa6GApY0aAs4R17908gnyBTh+CX9tShlAIiqSuSH/+sPUgd0QAf8J8BfT2hGnMaA5CUAAAAASUVORK5CYII=",
+      "noRasterize": false,
+      "width": 30,
+      "height": 30,
+      "page": 1,
+      "bgcolor": ""
+    }
+  },
+  "jsonrpc": "2.0",
+  "id": 4
 }
-
-async function previewImage(docID) {
-  const url = `https://www.tweekit.io/tweekit/api/image/preview/${docID}`;
-  const options = {
-    method: 'POST',
-    headers: { ...headers, 'Content-Type': 'application/json;charset=UTF-8' },
-    body: JSON.stringify({ width: 300, height: 300, fmt: 'png' })
-  };
-  const response = await fetch(url, options);
-  const buffer = await response.buffer();
-  fs.writeFileSync('output.png', buffer);
-}
-
-(async () => {
-  const docID = await uploadFile('example.jpg', 'example.jpg');
-  await previewImage(docID);
-  console.log('Transformation complete. File saved as output.png');
-})();
 ```
 
 ### Step 4: See It in Action
@@ -158,9 +142,9 @@ You can explore TweekIT visually before writing any code. The live demo lets you
 
 ## Authentication
 
-TweekIT supports multiple authentication methods so you can start quickly while maintaining security best practices as your project grows.
+TweekIT supports multiple authentication methods (REST API, APP ID method is ONLY for using). Set up your API Key and Secret so you can start quickly while maintaining security best practices.
 
-### Recommended Default: API Key + Secret
+### For MCP Server Use: API Key + Secret
 
 This is the most secure and flexible option. Use this for all production deployments.
 
@@ -170,56 +154,16 @@ This is the most secure and flexible option. Use this for all production deploym
 2. Store them securely — never commit to source control.
 3. Use server-side code or a reverse proxy to inject credentials into requests.
 
-**Example (Node.js):**
-
-```javascript
-const headers = {
-  "apikey": "{Your API Key}",
-  "apisecret": "{Your API Secret}"
-};
-```
-
 **Security Tips:**
 
 - Always use a reverse proxy or other server-side method to protect credentials.
 - Never embed secrets in client-side code.
 
-### AppID (Quick Prototyping)
-
-Use this for rapid experimentation, demos, or proof-of-concept work where security is less critical.
-
-**Steps:**
-
-1. Sign up for a free account.
-2. Register your widget to receive a domain-specific AppID.
-3. Pass the AppID in your widget constructor.
-
-**Example:**
-
-```javascript
-var tweekit = new Tweekit('#canvas0', {
-  appId: '{Your App ID}'
-});
-```
-
-### Bearer Token (auth.cpucoin.io)
-
-If you are integrating with CPUcoin's decentralized compute network, you can obtain a bearer token via `auth.cpucoin.io` and use it in the `Authorization` header.
-
-**Example:**
-
-```javascript
-const headers = {
-  "Authorization": "Bearer {YourToken}"
-};
-```
-
 **Next Steps:**  
 Once authenticated, you can:
 
-- Upload media
-- Transform and preview results
-- Download outputs
+- Upload media as part of the request using Base-64
+- Recieve output
 
 ## Server and Hosting
 
@@ -261,20 +205,6 @@ The server will listen on:
 
 ### Config Options
 
-**Remote Server Override**  
-If you have access to a hosted TweekIT MCP endpoint, update your MCP host configuration to point to that server’s base URL.  
-Example (VS Code MCP config):
-
-```json
-{
-  "mcpServers": {
-    "tweekit": {
-      "url": "https://mcp.yourdomain.com"
-    }
-  }
-}
-```
-
 **Local Development Mode**  
 By default, `server.py` will bind to `localhost` on port 8080. You can override the port with the `PORT` environment variable:
 
@@ -295,7 +225,7 @@ TweekIT offers a generous free tier so you can explore and integrate without cos
 ### Paid Plans
 
 If you exceed the free tier limit, you can upgrade to a paid plan at any time.  
-See the full pricing guide for details:  
+See the full pricing guide for details. You must have a token key pair to use the MCP Server:  
 [https://www.tweekit.io/pricing/](https://www.tweekit.io/pricing/)
 
 ### Handling Rate Limit Errors
@@ -307,7 +237,7 @@ Your MCP client should:
 
 1. Catch `429` responses.
 2. Surface a clear error message to the user.
-3. Recommend upgrading the plan or waiting until the quota resets.
+3. Recommend upgrading the plan immediately to continue.
 
 Example error payload:
 
@@ -322,33 +252,20 @@ Example error payload:
 
 Understanding these core concepts will help you get the most out of TweekIT in an MCP workflow.
 
-### DocId
+### Request includes Base-64 content → Response include Base-64 Results
 
-Every upload is assigned a unique **DocId**.
-
-- The DocId is used to reference your file in all subsequent preview, transform, and download requests.
-- DocIds expire **20 minutes** after upload. Once expired, the file is permanently deleted and cannot be retrieved.
-
-### Upload → Preview → Download Flow
-
-TweekIT uses a simple, stateless, three-step process:
-
-1. **Upload** the file and receive a DocId.
-2. **Preview/Transform** using the DocId and transformation parameters.
-3. **Download** the final transformed file in the desired format.
-
-This pattern works for both the REST API and the MCP tool, and ensures predictable, repeatable workflows.
+TweekIT MCP Server uses this simple, stateless and secure
 
 ### Transformations
 
 TweekIT supports a wide range of transformations, applied at preview time:
 
-- **Resize** by width and height
-- **Crop** by coordinates or aspect ratio
+- **Resize** by width and height (if send only one parameter, the other will be automatically calculated to maintain aspect ratio)
+- **Crop** by coordinates or aspect ratio (coming soon)
 - **Reformat** to a different file type
 - **Alpha channel** transparency control
-- **Elliptical crops** for circular or oval shapes
 - **Background color** fills for transparent or padded areas
+- **No Rasterize** fills for transparent or padded areas
 
 Multiple transformations can be applied in a single request.
 
@@ -675,7 +592,7 @@ curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
 
 Convert complex document or legacy filetypes from original formats into PDF files for compatibility into your current AI workflow.
 
-**REST Example**
+**REST Example (TweekIT API)**
 
 ```bash
 curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
