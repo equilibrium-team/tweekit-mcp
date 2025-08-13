@@ -302,8 +302,10 @@ Optional:
 - noRasterize: If the input document is a text-based document (doc, odt, xls, etc.) and the output format is set to 'pdf' with this parameter set to true, instead of rasterizing and doing image operations on the document, all pages will be converted to a PDF and returned. If the output format is not 'pdf', this parameter is ignored. Defaults to false. 
 - width: Desired width of the output (default: 0 for no resizing).
 - height: Desired height of the output (default: 0 for no resizing).
+- x1, y1, x2, y2: Integee crop coordinates. Defaults to all 0 (no cropping). Cropping is applied before the resize. The x1 and y1 values can be negative, which adds padding to the top and left; the x2 amd y2 can be greater than the original raster size, which adds padding to the right and bottom.
 - page: Page number to convert (for multi-page documents, default: 1).
-- bgcolor: Background color for transparent documents (default: empty string - leave transparent pixels as is).
+- alpha: boolean (defaults to True - pass alpha channel through if output format supports it) If false, then the alpha channel is removed and the pixels are replaced with the bgColor value.
+- bgColor: Background color padding or when transparent documents need to have their alpha channel removed. (default: "000000" or black). Is is okay to precede the hex value with a '#' (web color indicator)
 
 The image of the specified page (or page 1) will be returned in the response with the correct content type set. If noRasterize is set to true and all other conditions are met, a PDF of the contents of the entire submitted document will be returned.
 
