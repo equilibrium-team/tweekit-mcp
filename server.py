@@ -7,8 +7,8 @@ from fastmcp import FastMCP
 from fastmcp.utilities.types import Image, File
 from typing import Any, Dict
 
-BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
-#BASE_URL = "http://localhost:16377/api/image/"
+#BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
+BASE_URL = "http://localhost:16377/api/image/"
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING)
@@ -19,7 +19,7 @@ mcp = FastMCP("TweekIT MCP Server - normalize almost any file for AI ingestion")
 async def version() -> str:
     """Get current version of the TweekIT API."""
     url = f"{BASE_URL}version"
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.get(url)
         response.raise_for_status()
         return response.text
@@ -32,7 +32,7 @@ async def doctype(apiKey: str, apiSecret: str, extension: str = "*") -> Dict[str
     Args:
         apiKey (str): The API key for authentication.
         apiSecret (str): The API secret for authentication.
-        extension (str): The file extension to query (e.g., 'jpg', 'pdf') or leave off to return all supported input formats.
+        extension (str): The file extension to query (e.g., 'jpg', 'pdf') or leave off or use '*' to return all supported input formats.
 
     Returns:
         Dict[str, Any]: A dictionary containing the supported file formats or an error message.
@@ -69,8 +69,13 @@ async def convert(
     noRasterize: bool = False,
     width: int = 0,
     height: int = 0,
+    x1: int = 0,
+    y1: int = 0,
+    x2: int = 0,
+    y2: int = 0,
     page: int = 1,
-    bgcolor: str = ""
+    alpha: bool = True,
+    bgColor: str = ""
 ) -> Any:
     """
     Convert a base64-encoded document to the specified output format.
@@ -84,14 +89,26 @@ async def convert(
         noRasterize (bool, optional): For input document formats that are not raster images, do not rasterize the document - return it as a PDF. (outfmt must be set to pdf). The parameters listed below are ignored when doing document to PDF conversions.
         width (int, optional): The desired width of the output. Defaults to 0 (no resizing).
         height (int, optional): The desired height of the output. Defaults to 0 (no resizing).
+        x1, y1, x2, y2 (int, optional): The crop region of the input. The raster is scaled after the crop is applied. The x1 and y1 values can be negative, which adds padding to the top and left; the x2 amd y2 can be greater than the original raster size, which adds padding to the right and bottom. Defaults to all 0 (no cropping).
         page (int, optional): The page number to convert (for multi-page documents). Defaults to 1.
-        bgcolor (str, optional): The background color to apply to documents with transparent backgroundsfor the output (e.g., 'FFFFFF'). Defaults to an empty string -.
+        bgcolor (str, optional): The background color to apply when padding it required or when alpha is false and the input document uses an alpha channel (e.g., 'FFFFFF' or '#FFFFFF'). Defaults to 000000 (black).
+        alpha (bool, optional): Whether to preserve the alpha channel (transparency) in the output. Defaults to true. Alpha is only preserved for output formats which support it, regardless of this setting.
 
     Returns:
         Any: The converted document or an error message.
     """
     url = BASE_URL
-    async with httpx.AsyncClient(default_encoding="ascii") as client:
+    # Convert bgcolor from hex string (e.g., '#FFFFFF' or 'FFFFFF') to integer
+    bg = 0
+    if bgColor:
+        hexstr = bgColor.lstrip('#')
+        try:
+            bg = int(hexstr, 16)
+        except ValueError:
+            bg = 0  # fallback to black if invalid
+
+    # Call TweekIT
+    async with httpx.AsyncClient(default_encoding="ascii", timeout=60.0) as client:
         try:
             client.headers["ApiKey"] = apiKey
             client.headers["ApiSecret"] = apiSecret
@@ -99,7 +116,12 @@ async def convert(
                 "Fmt": outfmt,
                 "Width": width,
                 "Height": height,
-                "BgColor": bgcolor,
+                "X1": x1,
+                "Y1": y1,
+                "X2": x2,
+                "Y2": y2,
+                "Bg": bg,
+                "Alpha": alpha,
                 "Page": page,
                 "NoRasterize": noRasterize,
                 "DocDataType": inext,
