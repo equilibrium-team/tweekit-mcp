@@ -169,19 +169,13 @@ Once authenticated, you can:
 
 ## Server and Hosting
 
-### Hosted ready endpoints
+### Hosted ready MCP server
 
-Used for testing and free trials:
+All tools and resources are available here, used for testing and free trials:
 
-- [**https://mcp-tweekit-728625953614.us-west1.run.app/mcp/version**](https://mcp-tweekit-728625953614.us-west1.run.app/mcp/version)
+- [**https://mcp.tweekit.io/mcp/**](https://mcp-tweekit-728625953614.us-west1.run.app/mcp/version)
 
-Production for returning supported reader formats, or if a specific format is readable with a param request:
-
-- [**https://mcp-tweekit-728625953614.us-west1.run.app/mcp/doctype**](https://mcp-tweekit-728625953614.us-west1.run.app/mcp/doctype)
-
-Production for executing conversion requests:
-
-- [**https://mcp-tweekit-728625953614.us-west1.run.app/mcp/convert**](https://mcp-tweekit-728625953614.us-west1.run.app/mcp/convert)
+The currently available resource name is 'version'. The currently available tool names are 'doctype' and 'convert'. See below for parameters, or query the MCP server as it will return metadata instructing use of each of these.
 
 ### MCP Installation
 
@@ -340,9 +334,7 @@ Automatically crop and resize images into a consistent size and format.
       "page": 1,
       "bgcolor": ""
     }
-  },
-  "jsonrpc": "2.0",
-  "id": 4
+  }
 }
 ```
 
@@ -377,9 +369,7 @@ Process identity document photos into standardized formats for automated verific
       "height": 600,
       "bgcolor": "FFFFFF"
     }
-  },
-  "jsonrpc": "2.0",
-  "id": 4
+  }
 }
 ```
 
@@ -414,9 +404,7 @@ Generate platform-specific product images with correct aspect ratios and backgro
       "height": 1080,
       "bgcolor": "FFFFFF"
     }
-  },
-  "jsonrpc": "2.0",
-  "id": 4
+  }
 }
 ```
 
@@ -449,9 +437,7 @@ Convert files between formats for compatibility across different tools and workf
       "outfmt": "webp",
       "blob": "{Your base64 encoded document}"
     }
-  },
-  "jsonrpc": "2.0",
-  "id": 4
+  }
 }
 ```
 
@@ -484,9 +470,7 @@ Convert complex document or legacy filetypes from original formats into PDF file
       "noRasterize": true,
       "blob": "{Your base64 encoded document}"
     }
-  },
-  "jsonrpc": "2.0",
-  "id": 4
+  }
 }
 ```
 
