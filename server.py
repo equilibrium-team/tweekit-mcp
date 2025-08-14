@@ -7,8 +7,8 @@ from fastmcp import FastMCP
 from fastmcp.utilities.types import Image, File
 from typing import Any, Dict
 
-#BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
-BASE_URL = "http://localhost:16377/api/image/"
+BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
+#BASE_URL = "http://localhost:16377/api/image/"
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING)
