@@ -74,7 +74,7 @@ async def test_server():
             os.path.basename(__file__),
         }
         excluded_exts = {".py", ".toml", ".md", ".lock"}
-        image_exts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp", ".heic", ".heif"}
+        image_exts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif"}
 
         for filename in os.listdir(dirpath):
             filepath = os.path.join(dirpath, filename)
