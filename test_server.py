@@ -74,7 +74,7 @@ async def test_server():
             os.path.basename(__file__),
         }
         excluded_exts = {".py", ".toml", ".md", ".lock"}
-        image_exts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif", ".pdf"}
+        image_exts = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tif", ".tiff", ".webp", ".heic", ".heif", ".pdf", ".psd", ".psb", ".sgi"}
 
         for filename in os.listdir(dirpath):
             filepath = os.path.join(dirpath, filename)
@@ -104,6 +104,7 @@ async def test_server():
                 "noRasterize": True # this is only looked at for text documents and pdf output, so OK to always set to true, even for images
             }
 
+            print(f">>> 🔖 Calling convert tool for {filename}.")
             convert = await client.call_tool("convert", params)
             if convert.content:
                 content = convert.content
