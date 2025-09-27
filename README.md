@@ -2,6 +2,8 @@
 
 *Ingest and Convert Just About Any Filetype Into AI Workflows*
 
+Current version: v0.2.0
+
 ## Overview
 
 TweekIT MCP Server is the universal media translator for AI workflows, making any file ready for processing in seconds. **Built on the robust content processing engine of Equilibrium's MediaRich Server, a technology developed since 2000 and trusted by massive portals and media companies worldwide, TweekIT brings decades of expertise in handling complex media, drawing on a pedigree that includes the renowned DeBabelizer.**
@@ -381,6 +383,11 @@ TweekIT does not store your files persistently.
 
 Description:
 Fetches the current version of the TweekIT API. Takes no parameters.
+
+#### /server-version
+
+Description:
+Returns this MCP server's version string (e.g., `0.2.0`). Takes no parameters.
 
 ### Tools
 
