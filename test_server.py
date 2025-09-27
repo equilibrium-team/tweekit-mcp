@@ -24,6 +24,7 @@ async def test_server():
         tools = await client.list_tools()
         for tool in tools:
             print(f">>> 🛠️  Tool found: {tool.name}")
+        tool_names = {t.name for t in tools}
 
         successes = 0
         passed = False
@@ -60,6 +61,41 @@ async def test_server():
                 assert False, f">>> ⚠️ Doctype tool response is not valid JSON."
         except Exception as e:
             print(f">>> ⚠️ Failed to call doctype tool: {e}")
+
+        # Optional: Call the search tool if present
+        if "search" in tool_names:
+            try:
+                params = {"query": "tweekit site:tweekit.io", "max_results": 3}
+                result = await client.call_tool("search", params)
+                data = result.data if hasattr(result, "data") else result
+                if isinstance(data, dict) and "results" in data:
+                    print(f">>> ✅ Search tool returned {len(data['results'])} results")
+                    successes += 1
+                else:
+                    print(f">>> ⚠️ Search tool returned unexpected payload: {data}")
+            except Exception as e:
+                print(f">>> ⚠️ Failed to call search tool: {e}")
+
+        # Optional: Call the fetch tool if present
+        if "fetch" in tool_names:
+            try:
+                params = {"url": "https://example.com"}
+                result = await client.call_tool("fetch", params)
+                # fetch may return File/Image or JSON; accept any non-error
+                if result.content:
+                    print(f">>> ✅ Fetch tool returned binary content")
+                    successes += 1
+                else:
+                    data = result.data if hasattr(result, "data") else result
+                    if isinstance(data, dict) and ("text" in data or "status" in data):
+                        print(f">>> ✅ Fetch tool returned text content: status={data.get('status')}")
+                        successes += 1
+                    elif isinstance(data, dict) and "error" in data:
+                        print(f">>> ⚠️ Fetch tool error: {data['error']}")
+                    else:
+                        print(f">>> ⚠️ Fetch tool unexpected response: {data}")
+            except Exception as e:
+                print(f">>> ⚠️ Failed to call fetch tool: {e}")
 
         # Call the convert tool for every non-project file in this folder
         dirpath = os.path.dirname(__file__)
