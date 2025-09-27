@@ -2,10 +2,12 @@ import asyncio
 import httpx
 import logging
 import os
+import re
+from urllib.parse import quote_plus, urlparse
 
 from fastmcp import FastMCP
 from fastmcp.utilities.types import Image, File
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
 #BASE_URL = "http://localhost:16377/api/image/"
@@ -149,6 +151,93 @@ async def convert(
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             return {"error": f"An unexpected error occurred: {e}"}
+
+
+@mcp.tool()
+async def fetch(url: str) -> Any:
+    """Fetch a URL and return content.
+
+    - Images return as FastMCP Image.
+    - PDFs return as File(format="pdf").
+    - Text/JSON return as a JSON payload with metadata and text.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"}:
+        return {"error": "Unsupported URL scheme. Use http or https."}
+
+    headers = {
+        "User-Agent": "tweekit-mcp/0.1 (+https://github.com/equilibrium-team/tweekit-mcp)"
+    }
+    try:
+        async with httpx.AsyncClient(timeout=20.0, headers=headers, follow_redirects=True) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            ct = resp.headers.get("content-type", "").lower()
+
+            if ct.startswith("image/"):
+                return Image(data=resp.content, format=ct.split("/")[-1])
+            if ct.startswith("application/pdf"):
+                return File(data=resp.content, format="pdf")
+            if ct.startswith("text/") or "json" in ct:
+                text = resp.text
+                return {
+                    "url": str(url),
+                    "status": resp.status_code,
+                    "content_type": ct,
+                    "text": text,
+                }
+            # Fallback for other binary types
+            return File(data=resp.content, format="bin")
+    except httpx.HTTPStatusError as e:
+        return {"error": f"HTTP error: {e.response.status_code}"}
+    except httpx.RequestError as e:
+        return {"error": f"Network error: {e}"}
+    except Exception as e:
+        return {"error": f"Unexpected error: {e}"}
+
+
+@mcp.tool()
+async def search(query: str, max_results: int = 5) -> Dict[str, Any]:
+    """Simple web search using DuckDuckGo HTML endpoint.
+
+    Returns a list of {title, url, snippet} objects. Best‑effort parsing.
+    """
+    max_results = max(1, min(int(max_results), 10))
+    q = quote_plus(query)
+    url = f"https://html.duckduckgo.com/html/?q={q}"
+    headers = {
+        "User-Agent": "tweekit-mcp/0.1 (+https://github.com/equilibrium-team/tweekit-mcp)",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            html = r.text
+
+        # Very light parsing for result blocks
+        items: List[Dict[str, str]] = []
+        # Anchor tags have class result__a and href; snippets often in result__snippet
+        # This is heuristic and may change.
+        for m in re.finditer(r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html, re.I | re.S):
+            href = m.group(1)
+            title = re.sub("<.*?>", "", m.group(2))
+            # Try to find a nearby snippet
+            start = m.end()
+            snippet_match = re.search(r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>|<div[^>]*class="result__snippet"[^>]*>(.*?)</div>', html[start:start+2000], re.I | re.S)
+            snippet_html = snippet_match.group(1) if snippet_match and snippet_match.group(1) else (snippet_match.group(2) if snippet_match and snippet_match.group(2) else "")
+            snippet = re.sub("<.*?>", "", snippet_html)
+            items.append({"title": title.strip(), "url": href, "snippet": snippet.strip()})
+            if len(items) >= max_results:
+                break
+
+        return {"query": query, "results": items}
+    except httpx.HTTPStatusError as e:
+        return {"error": f"HTTP error: {e.response.status_code}"}
+    except httpx.RequestError as e:
+        return {"error": f"Network error: {e}"}
+    except Exception as e:
+        return {"error": f"Unexpected error: {e}"}
 
 
 if __name__ == "__main__":

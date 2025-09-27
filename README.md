@@ -54,6 +54,9 @@ The entire process happens in seconds, and your workflow never sees an incompati
 - [Quickstart](#quickstart)
 - [Authentication](#authentication)
 - [Server and Hosting](#server-and-hosting)
+- [Client Compatibility](#client-compatibility)
+  - [Quickstart (Claude Desktop)](#quickstart-claude-desktop)
+  - [Quickstart (ChatGPT MCP)](#quickstart-chatgpt-mcp)
 - [Rate Limits and Pricing](#rate-limits-and-pricing)
 - [Core Concepts](#core-concepts)
 - [MCP API Reference](#mcp-reference)
@@ -76,8 +79,8 @@ The entire process happens in seconds, and your workflow never sees an incompati
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/your-username/mcpserver.git
-   cd mcpserver
+   git clone https://github.com/equilibrium-team/tweekit-mcp.git
+   cd tweekit-mcp
    ```
 
 2. Install dependencies:
@@ -173,7 +176,7 @@ Once authenticated, you can:
 
 All tools and resources are available here, used for testing and free trials:
 
-- [**https://mcp.tweekit.io/mcp/**](https://mcp-tweekit-728625953614.us-west1.run.app/mcp/version)
+- Public MCP endpoint (HTTP transport): [https://mcp.tweekit.io/mcp/](https://mcp.tweekit.io/mcp/)
 
 The currently available resource name is 'version'. The currently available tool names are 'doctype' and 'convert'. See below for parameters, or query the MCP server as it will return metadata instructing use of each of these.
 
@@ -184,7 +187,7 @@ You can run the TweekIT MCP server locally or connect to a hosted instance. The 
 **Local Installation**
 
 ```bash
-git clone https://github.com/your-org/tweekit-mcp.git
+git clone https://github.com/equilibrium-team/tweekit-mcp.git
 cd tweekit-mcp
 pip install -r requirements.txt
 ```
@@ -206,6 +209,116 @@ By default, `server.py` will bind to `localhost` on port 8080. You can override 
 
 ```bash
 PORT=9090 uv run server.py
+```
+
+## Client Compatibility
+
+- Claude: Compatible (discovers tools via listTools; works with HTTP transport).
+- ChatGPT (OpenAI): Compatible (provides required tools: `search`, `fetch`).
+- Cursor: Not targeted (no workspace/file tools exposed).
+
+Examples
+
+- Claude Desktop (config snippet):
+
+  ```json
+  {
+    "mcpServers": {
+      "tweekit": {
+        "transport": { "type": "http", "url": "https://mcp.tweekit.io/mcp/" }
+      }
+    }
+  }
+  ```
+
+- Claude tool call (arguments example):
+
+  ```json
+  {
+    "name": "convert",
+    "arguments": {
+      "apiKey": "YOUR_KEY",
+      "apiSecret": "YOUR_SECRET",
+      "inext": "png",
+      "outfmt": "webp",
+      "blob": "<base64>",
+      "width": 300,
+      "height": 300
+    }
+  }
+  ```
+
+- OpenAI (Node, using MCP TypeScript client):
+
+  ```ts
+  import { Client } from "@modelcontextprotocol/sdk/client";
+  import { HttpClientTransport } from "@modelcontextprotocol/sdk/client/transport/http";
+
+  const transport = new HttpClientTransport(new URL("https://mcp.tweekit.io/mcp/"));
+  const client = new Client({ name: "tweekit-example", version: "1.0.0" }, { capabilities: {} }, transport);
+  await client.connect();
+  const tools = await client.listTools();
+  const res = await client.callTool({ name: "search", arguments: { query: "tweekit", max_results: 3 } });
+  console.log(res);
+  ```
+
+- OpenAI (Python, quick call):
+
+  ```py
+  import asyncio
+  from fastmcp import Client
+
+  async def main():
+      async with Client("https://mcp.tweekit.io/mcp/") as c:
+          print(await c.list_tools())
+          out = await c.call_tool("fetch", {"url": "https://tweekit.io"})
+          print(out)
+  asyncio.run(main())
+  ```
+
+### Quickstart (Claude Desktop)
+
+1) Configure MCP server
+
+```json
+{
+  "mcpServers": {
+    "tweekit": {
+      "transport": { "type": "http", "url": "https://mcp.tweekit.io/mcp/" }
+    }
+  }
+}
+```
+
+2) Use in chat
+
+- Ask: “List supported input types via doctype.”
+- Or call convert with your key/secret and a base64 blob:
+
+```json
+{
+  "name": "convert",
+  "arguments": { "apiKey": "…", "apiSecret": "…", "inext": "png", "outfmt": "webp", "blob": "<base64>" }
+}
+```
+
+### Quickstart (ChatGPT MCP)
+
+If your ChatGPT environment supports MCP tools, add an HTTP MCP server pointing to the public endpoint.
+
+1) Configure server: URL `https://mcp.tweekit.io/mcp/` (HTTP transport)
+2) Use tools in a chat:
+
+- search
+
+```json
+{ "name": "search", "arguments": { "query": "tweekit", "max_results": 3 } }
+```
+
+- fetch
+
+```json
+{ "name": "fetch", "arguments": { "url": "https://tweekit.io" } }
 ```
 
 ## Rate Limits and Pricing
@@ -302,6 +415,29 @@ Optional:
 - bgColor: Background color padding or when transparent documents need to have their alpha channel removed. (default: "000000" or black). Is is okay to precede the hex value with a '#' (web color indicator)
 
 The image of the specified page (or page 1) will be returned in the response with the correct content type set. If noRasterize is set to true and all other conditions are met, a PDF of the contents of the entire submitted document will be returned.
+
+#### /search
+
+Description: Performs a simple web search using DuckDuckGo's HTML endpoint.
+
+Parameters:
+- query: Search query string.
+- max_results: Maximum number of results to return (default: 5, max: 10).
+
+Returns: `{ query, results: [{ title, url, snippet }] }`
+
+#### /fetch
+
+Description: Fetches a URL and returns content based on content-type.
+
+Parameters:
+- url: The `http` or `https` URL to fetch.
+
+Returns:
+- Image content as `image` resource for `image/*` responses.
+- PDF as `resource` with `format="pdf"` for `application/pdf`.
+- Text/JSON as a JSON object with `text` and metadata.
+- Other binary as a generic `resource` with `format="bin"`.
 
 ## REST API Reference
 
