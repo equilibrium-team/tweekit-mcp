@@ -15,6 +15,8 @@ BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING)
 
+SERVER_VERSION = "0.2.0"
+
 mcp = FastMCP("TweekIT MCP Server - normalize almost any file for AI ingestion")
 
 @mcp.resource("config://tweekit-version")
@@ -25,6 +27,12 @@ async def version() -> str:
         response = await client.get(url)
         response.raise_for_status()
         return response.text
+
+
+@mcp.resource("config://tweekit-mcp-version")
+async def mcp_version() -> str:
+    """Return the TweekIT MCP server version."""
+    return SERVER_VERSION
 
 @mcp.tool()
 async def doctype(apiKey: str, apiSecret: str, extension: str = "*") -> Dict[str, Any]:
