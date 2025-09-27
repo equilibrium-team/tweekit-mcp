@@ -79,8 +79,8 @@ The entire process happens in seconds, and your workflow never sees an incompati
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/your-username/mcpserver.git
-   cd mcpserver
+   git clone https://github.com/equilibrium-team/tweekit-mcp.git
+   cd tweekit-mcp
    ```
 
 2. Install dependencies:
@@ -187,7 +187,7 @@ You can run the TweekIT MCP server locally or connect to a hosted instance. The 
 **Local Installation**
 
 ```bash
-git clone https://github.com/your-org/tweekit-mcp.git
+git clone https://github.com/equilibrium-team/tweekit-mcp.git
 cd tweekit-mcp
 pip install -r requirements.txt
 ```
