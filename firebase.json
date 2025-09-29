@@ -10,7 +10,18 @@
         "firebase-debug.*.log",
         "*.local"
       ],
-      "runtime": "python310"
+      "runtime": "python311",
+      "predeploy": [
+        "echo 'Dependencies are pre-installed'"
+      ]
     }
-  ]
+  ],
+  "hosting": {
+    "rewrites": [
+      {
+        "source": "/mcp/**",
+        "function": "mcp_server"
+      }
+    ]
+  }
 }
