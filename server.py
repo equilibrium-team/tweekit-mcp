@@ -15,7 +15,7 @@ BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING)
 
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "0.2.1"
 
 mcp = FastMCP("TweekIT MCP Server - normalize almost any file for AI ingestion")
 
