@@ -2,7 +2,7 @@
 
 *Ingest and Convert Just About Any Filetype Into AI Workflows*
 
-Current version: v0.2.0
+Current version: v0.2.1
 
 ## Overview
 
@@ -387,7 +387,7 @@ Fetches the current version of the TweekIT API. Takes no parameters.
 #### /server-version
 
 Description:
-Returns this MCP server's version string (e.g., `0.2.0`). Takes no parameters.
+Returns this MCP server's version string (e.g., `0.2.1`). Takes no parameters.
 
 ### Tools
 
