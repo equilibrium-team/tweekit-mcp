@@ -77,3 +77,34 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 
 License
 This project is licensed under the MIT License. See the LICENSE file for details.
+
+## Firebase Deploy (Functions + Hosting)
+
+Deploy the MCP server as a Firebase Function (served via Hosting rewrite) to leverage Blaze plan pay‑per‑use.
+
+Prerequisites
+- Install CLI: `npm i -g firebase-tools`
+- Login/project: `firebase login`, then `firebase use <PROJECT_ID>`
+
+Vendor Python dependencies
+- With uv (recommended):
+  - `uv pip install -r functions/requirements.txt --target functions/packages`
+- Or with pip:
+  - `pip install -r functions/requirements.txt -t functions/packages`
+
+Deploy
+- `firebase deploy --only functions,hosting`
+
+Endpoints
+- Hosting rewrite: `https://<PROJECT_ID>.web.app/mcp` → Cloud Function `mcp_server`
+- Function (direct, optional): `https://us-west1-<PROJECT_ID>.cloudfunctions.net/mcp_server/mcp`
+
+Configuration
+- Region: set to `us-west1` via `set_global_options` in `functions/main.py`.
+- Instance limits: global max instances set to 10.
+- Logging level: set `LOG_LEVEL` env var (e.g., `INFO`, `WARNING`).
+
+Testing
+- Point the client to Hosting:
+  - In `test_server.py`: `Client("https://<PROJECT_ID>.web.app/mcp")`
+- Run: `uv run python test_server.py`
