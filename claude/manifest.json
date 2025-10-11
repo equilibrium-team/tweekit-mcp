@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "name": "TweekIT Converter",
+  "description": "Normalize and convert documents for AI ingestion with the TweekIT MCP server.",
+  "version": "0.1.0",
+  "author": "TweekIT",
+  "homepage": "https://tweekit.com",
+  "entry_point": {
+    "type": "remote_http",
+    "transport": "streamable-http",
+    "url": "https://mcp.tweekit.com/mcp"
+  },
+  "environment": [
+    {
+      "name": "TWEAKIT_API_KEY",
+      "required": true,
+      "description": "API key used to authenticate against the upstream TweekIT service."
+    },
+    {
+      "name": "TWEAKIT_API_SECRET",
+      "required": true,
+      "description": "API secret paired with the API key for privileged conversions."
+    }
+  ],
+  "capabilities": [
+    "document-conversion",
+    "format-inspection"
+  ],
+  "permissions": {
+    "network_access": true,
+    "filesystem_access": false
+  },
+  "metadata": {
+    "support": "support@tweekit.com",
+    "legal": "https://tweekit.com/legal"
+  }
+}

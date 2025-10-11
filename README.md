@@ -78,6 +78,15 @@ Contributions are welcome! Feel free to open issues or submit pull requests.
 License
 This project is licensed under the MIT License. See the LICENSE file for details.
 
+## Integration Guides
+
+- ChatGPT plugin setup: `docs/chatgpt-plugin.md`
+- Claude Desktop bundle: `docs/claude-bundle.md`
+- Grok interim workflow: `docs/grok-integration.md`
+- DeepSeek bridge + roadmap: `docs/deepseek-integration.md`
+- IDE assistants (Cursor, Continue, etc.): `docs/developer-tools.md`
+- SDK quickstarts (Python/Node): `docs/quickstarts.md`
+
 ## Firebase Deploy (Functions + Hosting)
 
 Deploy the MCP server as a Firebase Function (served via Hosting rewrite) to leverage Blaze plan pay‑per‑use.
