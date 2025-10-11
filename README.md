@@ -86,6 +86,7 @@ This project is licensed under the MIT License. See the LICENSE file for details
 - DeepSeek bridge + roadmap: `docs/deepseek-integration.md`
 - IDE assistants (Cursor, Continue, etc.): `docs/developer-tools.md`
 - SDK quickstarts (Python/Node): `docs/quickstarts.md`
+- Automated testing strategy: `docs/testing.md`
 
 ## Firebase Deploy (Functions + Hosting)
 
