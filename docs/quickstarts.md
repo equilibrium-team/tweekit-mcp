@@ -36,3 +36,4 @@ The script lists tools and performs a conversion, returning either binary/base64
 - Wrap the helper client (`clients/python/tweekit_client.py`) or Node quickstart code in your own services to orchestrate conversions before sending normalized output to agents.
 - Add tests that mock the MCP server or run against staging endpoints to ensure backward compatibility with new TweekIT releases.
 - To generate SDKs, expand the helpers into publishable packages (PyPI/NPM) and hook into CI for versioned releases.
+- Once staging endpoints exist, add end-to-end integration tests that exercise the quickstarts with real credentials, gating them behind environment variables (skip in CI when unset).
