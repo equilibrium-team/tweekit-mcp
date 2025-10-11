@@ -76,6 +76,7 @@ This roadmap breaks down the remaining work to package the TweekIT MCP server fo
 ## Cross-Cutting Requirements
 - Ensure MCP server remains API-compliant: document versioning strategy, test suite updates, and backward-compat checks.
 - Establish staging environment for manifests/bundles before public release.
-- Add CI checks for manifest schema validation, bundle integrity, and SDK linting.
+- Add CI checks for manifest schema validation, bundle integrity, SDK linting, and `pytest` automation (proxy, configs, helpers).
+- Track MCP Pulse submission prerequisites: automated test evidence, connector documentation, and distribution artifacts.
 
 > **Next Step:** Review the roadmap, assign owners/dates, and prioritize implementation order. Once confirmed, we can start opening tracked issues for each deliverable.
