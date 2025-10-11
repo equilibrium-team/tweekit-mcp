@@ -13,6 +13,7 @@
 - `uv run python test_server.py` – list tools against the configured endpoint; update the URL if you switch targets.
 - `uv pip install -r functions/requirements.txt --target functions/packages` – vendor deps for Firebase (use `pip` if `uv` missing).
 - `bash scripts/deploy_firebase.sh -p <PROJECT_ID>` – vendor dependencies (unless `--skip-vendor`) and deploy functions + hosting.
+- `pip install -e .[dev] && pytest` – run automated integration tests (proxy, bundle, configs, clients).
 
 ## Coding Style & Naming Conventions
 - Python 3.10+ with PEP 8 defaults: four-space indents, snake_case functions, SCREAMING_SNAKE_CASE env constants.
@@ -31,6 +32,7 @@
 - Group related changes and flag environment impacts in commit bodies.
 - PRs must cover scope, executed tests (`uv run python test_server.py`), and linked issues or deploy notes.
 - Attach screenshots or logs when behavior changes observable outputs (tool listings, deployment results).
+- Include `pytest` output when modifying integration tooling, ensuring the automated suite remains green.
 
 ## Security & Configuration Tips
 - Never commit API credentials; load `ApiKey`/`ApiSecret` from env vars or secrets managers before invoking tools.
