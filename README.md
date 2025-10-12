@@ -87,6 +87,7 @@ This project is licensed under the MIT License. See the LICENSE file for details
 - IDE assistants (Cursor, Continue, etc.): `docs/developer-tools.md`
 - SDK quickstarts (Python/Node): `docs/quickstarts.md`
 - Automated testing strategy: `docs/testing.md`
+- MCP Pulse submission checklist: `docs/mcp-pulse-checklist.md`
 
 ## Firebase Deploy (Functions + Hosting)
 
