@@ -79,4 +79,8 @@ This roadmap breaks down the remaining work to package the TweekIT MCP server fo
 - Add CI checks for manifest schema validation, bundle integrity, SDK linting, and `pytest` automation (proxy, configs, helpers).
 - Track MCP Pulse submission prerequisites via `docs/mcp-pulse-checklist.md`: automated test evidence, connector documentation, and distribution artifacts.
 
+## Current Open Tasks
+- Review `docs/backlog.md` for issue-ready items covering Grok native support, DeepSeek bridge hardening, IDE onboarding feedback, and SDK packaging.
+- Prioritize staging environment setup to unlock E2E testing commitments and MCP Pulse submission.
+
 > **Next Step:** Review the roadmap, assign owners/dates, and prioritize implementation order. Once confirmed, we can start opening tracked issues for each deliverable.
