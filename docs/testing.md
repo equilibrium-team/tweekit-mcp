@@ -9,6 +9,11 @@ This repository ships with a pytest-based test suite to validate MCP integration
 - **Python helper client** – Exercises the `TweekitClient` wrapper with a fake MCP client to confirm payload construction and credential handling.
 - **Staging E2E (future)** – When live MCP endpoints and credentials are available, extend the suite with opt-in tests (skipped by default) to validate real conversions and bridge scripts.
 
+### Coverage Gaps
+- Node.js quickstart currently lacks automated tests; add once an MCP-compatible test harness is available.
+- DeepSeek bridge script only has unit-level coverage; add integration tests after staging credentials are provisioned.
+- IDE configs validated via JSON checks; consider end-to-end smoke tests using headless environments or recorded sessions when supported by platforms.
+
 Future integrations should add tests under `tests/` to keep parity (e.g., Grok documentation helpers, DeepSeek bridge scripting).
 
 ## Running Tests
