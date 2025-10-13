@@ -123,6 +123,7 @@ The JSON was captured from the use of MCP Inspector with the publicly available 
     "arguments": {
       "apiKey": "{Your TweekIT API key}",
       "apiSecret": "{Your TweekIT API secret}",
+      "authToken": "{Your CPUcoin JWT}",
       "inext": "png",
       "outfmt": "png",
       "blob": "iVBORw0KGgoAAAANSUhEUgAAABwAAAA6CAYAAACj+Dm/AAAABmJLR0QAAAAAAAD5Q7t/AAAACXBIWXMAAAsSAAALEgHS3X78AAAAHnRFWHRTb2Z0d2FyZQBFcXVpbGlicml1bSBNZWRpYVJpY2h7w4AAAAAB30lEQVRYhe2Xv0vDQBTHP4rQTRGhLqKiYt38MaggKIi46e6im2Rw7FJw7NAh4uAi+h/oIDgKnR3VQZROKiLYrZtOOiQH1+RevJQ0INwXQt7de7lP++7l7tJTq9XIU7250hzQAR3QAR3QAXMH3gM/wG0ewHtgNrSXgXo3gXUNprTSLaAPrBv6C4DXDeBBgm8ha+ArwT+RNJkl8BoY/SNmKiugB2xaxA1nBayQnEolY+GkBdqkUlescNIAPWBL8D0I/bHCSQOsCP3fwFx4jypWOLbApFRehfdPgy9WODbApKpsATuh/WHwxwrHBphUlRea/SLErKUBniGn8g3Y19qPQtx4GuBugu8y0q4KcRN6oy9hwFvkVDaAfoKtaQgYBAaE2KINsE6wkUqaDi9b+UBZAn5ht3Sl0bwyTHOYNQxgRAIad+kMNJY3sAAcQvscesQPQ7qaBPP7Bbxr/XeaXab9BKdrMQrcS4AdhYPZ6EkArkJ7SucNQRC8c7YwCNZW084xAPgKeI25Or+B4xQwpWehf0MBl4SAG+C0A6D0zIwCFg3OJrDdAUwBTaeAggI2DM6TDmFKcwT7pa6GApY0aAs4R17908gnyBTh+CX9tShlAIiqSuSH/+sPUgd0QAf8J8BfT2hGnMaA5CUAAAAASUVORK5CYII=",
@@ -148,6 +149,16 @@ You can explore TweekIT visually before writing any code. The live demo lets you
 ## Authentication
 
 TweekIT supports multiple authentication methods (REST API, APP ID method is ONLY for using). Set up your API Key and Secret so you can start quickly while maintaining security best practices.
+
+External authentication (optional): The MCP server advertises an external auth flow via CPUcoin. If your client obtains a JWT from https://auth.cpucoin.io, pass it to tools as `authToken` and the server will forward it in the `Authorization: Bearer <token>` header to external endpoints.
+
+Environment setup example:
+
+```bash
+export TWEEKIT_APIKEY=...        # from tweekit.io
+export TWEEKIT_APISECRET=...     # from tweekit.io
+export CPUCOIN_JWT=eyJ...        # from auth.cpucoin.io flow
+```
 
 ### For MCP Server Use: API Key + Secret
 
@@ -239,6 +250,7 @@ Examples
     "arguments": {
       "apiKey": "YOUR_KEY",
       "apiSecret": "YOUR_SECRET",
+      "authToken": "YOUR_JWT",
       "inext": "png",
       "outfmt": "webp",
       "blob": "<base64>",
@@ -262,6 +274,22 @@ Examples
   console.log(res);
   ```
 
+  With CPUcoin JWT from env:
+
+  ```ts
+  const jwt = process.env.CPUCOIN_JWT; // export CPUCOIN_JWT=eyJ...
+  const doctype = await client.callTool({
+    name: "doctype",
+    arguments: {
+      apiKey: process.env.TWEEKIT_APIKEY,
+      apiSecret: process.env.TWEEKIT_APISECRET,
+      extension: "*",
+      authToken: jwt,
+    },
+  });
+  console.log(doctype);
+  ```
+
 - OpenAI (Python, quick call):
 
   ```py
@@ -273,6 +301,25 @@ Examples
           print(await c.list_tools())
           out = await c.call_tool("fetch", {"url": "https://tweekit.io"})
           print(out)
+  asyncio.run(main())
+  ```
+
+  With CPUcoin JWT from env:
+
+  ```py
+  import os, asyncio
+  from fastmcp import Client
+
+  async def main():
+      async with Client("https://mcp.tweekit.io/mcp/") as c:
+          args = {
+              "apiKey": os.environ.get("TWEEKIT_APIKEY"),
+              "apiSecret": os.environ.get("TWEEKIT_APISECRET"),
+              "extension": "*",
+              "authToken": os.environ.get("CPUCOIN_JWT"),
+          }
+          res = await c.call_tool("doctype", args)
+          print(res)
   asyncio.run(main())
   ```
 
@@ -298,7 +345,7 @@ Examples
 ```json
 {
   "name": "convert",
-  "arguments": { "apiKey": "…", "apiSecret": "…", "inext": "png", "outfmt": "webp", "blob": "<base64>" }
+  "arguments": { "apiKey": "…", "apiSecret": "…", "authToken": "…", "inext": "png", "outfmt": "webp", "blob": "<base64>" }
 }
 ```
 
@@ -393,6 +440,7 @@ Parameters:
 - extension: File extension (e.g., jpg, docx). Optional, defaults to '*'. (return all supported input document types).
 - apiKey: API key for authentication.
 - apiSecret: API secret for authentication.
+- authToken: Optional JWT bearer token from external auth (e.g., auth.cpucoin.io). If provided, forwarded as `Authorization: Bearer <token>` to external endpoints.
 
 #### /convert
 
@@ -404,6 +452,7 @@ Parameters:
 - inext: Input file extension (e.g., jpg, png, doc, docx, etc.).
 - outfmt: Desired output format (e.g., jpg, pdf, png).
 - blob: Base64-encoded document data.
+- authToken: Optional JWT bearer token from external auth (e.g., auth.cpucoin.io). If provided, forwarded as `Authorization: Bearer <token>` to external endpoints.
 
 Optional:
 - noRasterize: If the input document is a text-based document (doc, odt, xls, etc.) and the output format is set to 'pdf' with this parameter set to true, instead of rasterizing and doing image operations on the document, all pages will be converted to a PDF and returned. If the output format is not 'pdf', this parameter is ignored. Defaults to false. 
@@ -458,12 +507,13 @@ Automatically crop and resize images into a consistent size and format.
   "method": "tools/call",
   "params": {
     "name": "convert",
-    "arguments": {
-      "apiKey": "{Your TweekIT API key}",
-      "apiSecret": "{Your TweekIT API secret}",
-      "inext": "png",
-      "outfmt": "png",
-      "blob": "iVBORw0KGgoAAAANSUhEUgAAABwAAAA6CAYAAACj+Dm/AAAABmJLR0QAAAAAAAD5Q7t/AAAACXBIWXMAAAsSAAALEgHS3X78AAAAHnRFWHRTb2Z0d2FyZQBFcXVpbGlicml1bSBNZWRpYVJpY2h7w4AAAAAB30lEQVRYhe2Xv0vDQBTHP4rQTRGhLqKiYt38MaggKIi46e6im2Rw7FJw7NAh4uAi+h/oIDgKnR3VQZROKiLYrZtOOiQH1+RevJQ0INwXQt7de7lP++7l7tJTq9XIU7250hzQAR3QAR3QAXMH3gM/wG0ewHtgNrSXgXo3gXUNprTSLaAPrBv6C4DXDeBBgm8ha+ArwT+RNJkl8BoY/SNmKiugB2xaxA1nBayQnEolY+GkBdqkUlescNIAPWBL8D0I/bHCSQOsCP3fwFx4jypWOLbApFRehfdPgy9WODbApKpsATuh/WHwxwrHBphUlRea/SLErKUBniGn8g3Y19qPQtx4GuBugu8y0q4KcRN6oy9hwFvkVDaAfoKtaQgYBAaE2KINsE6wkUqaDi9b+UBZAn5ht3Sl0bwyTHOYNQxgRAIad+kMNJY3sAAcQvscesQPQ7qaBPP7Bbxr/XeaXab9BKdrMQrcS4AdhYPZ6EkArkJ7SucNQRC8c7YwCNZW084xAPgKeI25Or+B4xQwpWehf0MBl4SAG+C0A6D0zIwCFg3OJrDdAUwBTaeAggI2DM6TDmFKcwT7pa6GApY0aAs4R17908gnyBTh+CX9tShlAIiqSuSH/+sPUgd0QAf8J8BfT2hGnMaA5CUAAAAASUVORK5CYII=",
+      "arguments": {
+        "apiKey": "{Your TweekIT API key}",
+        "apiSecret": "{Your TweekIT API secret}",
+        "authToken": "{Your CPUcoin JWT}",
+        "inext": "png",
+        "outfmt": "png",
+        "blob": "iVBORw0KGgoAAAANSUhEUgAAABwAAAA6CAYAAACj+Dm/AAAABmJLR0QAAAAAAAD5Q7t/AAAACXBIWXMAAAsSAAALEgHS3X78AAAAHnRFWHRTb2Z0d2FyZQBFcXVpbGlicml1bSBNZWRpYVJpY2h7w4AAAAAB30lEQVRYhe2Xv0vDQBTHP4rQTRGhLqKiYt38MaggKIi46e6im2Rw7FJw7NAh4uAi+h/oIDgKnR3VQZROKiLYrZtOOiQH1+RevJQ0INwXQt7de7lP++7l7tJTq9XIU7250hzQAR3QAR3QAXMH3gM/wG0ewHtgNrSXgXo3gXUNprTSLaAPrBv6C4DXDeBBgm8ha+ArwT+RNJkl8BoY/SNmKiugB2xaxA1nBayQnEolY+GkBdqkUlescNIAPWBL8D0I/bHCSQOsCP3fwFx4jypWOLbApFRehfdPgy9WODbApKpsATuh/WHwxwrHBphUlRea/SLErKUBniGn8g3Y19qPQtx4GuBugu8y0q4KcRN6oy9hwFvkVDaAfoKtaQgYBAaE2KINsE6wkUqaDi9b+UBZAn5ht3Sl0bwyTHOYNQxgRAIad+kMNJY3sAAcQvscesQPQ7qaBPP7Bbxr/XeaXab9BKdrMQrcS4AdhYPZ6EkArkJ7SucNQRC8c7YwCNZW084xAPgKeI25Or+B4xQwpWehf0MBl4SAG+C0A6D0zIwCFg3OJrDdAUwBTaeAggI2DM6TDmFKcwT7pa6GApY0aAs4R17908gnyBTh+CX9tShlAIiqSuSH/+sPUgd0QAf8J8BfT2hGnMaA5CUAAAAASUVORK5CYII=",
       "noRasterize": false,
       "width": 30,
       "height": 30,
@@ -495,16 +545,17 @@ Process identity document photos into standardized formats for automated verific
   "method": "tools/call",
   "params": {
     "name": "convert",
-    "arguments": {
-      "apiKey": "{Your TweekIT API key}",
-      "apiSecret": "{Your TweekIT API secret}",
-      "inext": "jpg",
-      "outfmt": "webp",
-      "blob": "{Your base64 encoded photo}",
-      "width": 600,
-      "height": 600,
-      "bgcolor": "FFFFFF"
-    }
+      "arguments": {
+        "apiKey": "{Your TweekIT API key}",
+        "apiSecret": "{Your TweekIT API secret}",
+        "authToken": "{Your CPUcoin JWT}",
+        "inext": "jpg",
+        "outfmt": "webp",
+        "blob": "{Your base64 encoded photo}",
+        "width": 600,
+        "height": 600,
+        "bgcolor": "FFFFFF"
+      }
   }
 }
 ```
@@ -530,16 +581,17 @@ Generate platform-specific product images with correct aspect ratios and backgro
   "method": "tools/call",
   "params": {
     "name": "convert",
-    "arguments": {
-      "apiKey": "{Your TweekIT API key}",
-      "apiSecret": "{Your TweekIT API secret}",
-      "inext": "jpg",
-      "outfmt": "jpg",
-      "blob": "{Your base64 encoded photo}",
-      "width": 1080,
-      "height": 1080,
-      "bgcolor": "FFFFFF"
-    }
+      "arguments": {
+        "apiKey": "{Your TweekIT API key}",
+        "apiSecret": "{Your TweekIT API secret}",
+        "authToken": "{Your CPUcoin JWT}",
+        "inext": "jpg",
+        "outfmt": "jpg",
+        "blob": "{Your base64 encoded photo}",
+        "width": 1080,
+        "height": 1080,
+        "bgcolor": "FFFFFF"
+      }
   }
 }
 ```
@@ -566,13 +618,14 @@ Convert files between formats for compatibility across different tools and workf
   "method": "tools/call",
   "params": {
     "name": "convert",
-    "arguments": {
-      "apiKey": "{Your TweekIT API key}",
-      "apiSecret": "{Your TweekIT API secret}",
-      "inext": "{filename extension of the input doc}",
-      "outfmt": "webp",
-      "blob": "{Your base64 encoded document}"
-    }
+      "arguments": {
+        "apiKey": "{Your TweekIT API key}",
+        "apiSecret": "{Your TweekIT API secret}",
+        "authToken": "{Your CPUcoin JWT}",
+        "inext": "{filename extension of the input doc}",
+        "outfmt": "webp",
+        "blob": "{Your base64 encoded document}"
+      }
   }
 }
 ```
@@ -598,14 +651,15 @@ Convert complex document or legacy filetypes from original formats into PDF file
   "method": "tools/call",
   "params": {
     "name": "convert",
-    "arguments": {
-      "apiKey": "{Your TweekIT API key}",
-      "apiSecret": "{Your TweekIT API secret}",
-      "inext": "{filename extension of the input doc}",
-      "outfmt": "pdf",
-      "noRasterize": true,
-      "blob": "{Your base64 encoded document}"
-    }
+      "arguments": {
+        "apiKey": "{Your TweekIT API key}",
+        "apiSecret": "{Your TweekIT API secret}",
+        "authToken": "{Your CPUcoin JWT}",
+        "inext": "{filename extension of the input doc}",
+        "outfmt": "pdf",
+        "noRasterize": true,
+        "blob": "{Your base64 encoded document}"
+      }
   }
 }
 ```

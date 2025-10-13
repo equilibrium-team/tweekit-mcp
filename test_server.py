@@ -50,7 +50,9 @@ async def test_server():
             params = {
                 "apiKey": os.environ.get("TWEEKIT_APIKEY"),
                 "apiSecret": os.environ.get("TWEEKIT_APISECRET"),
-                "extension": "*"
+                "extension": "*",
+                # Forward optional CPUcoin JWT to server tools
+                "authToken": os.environ.get("CPUCOIN_JWT"),
             }
             doctype = await client.call_tool("doctype", params)
             try:
@@ -137,6 +139,8 @@ async def test_server():
                 "blob": encoded_string,
                 "inext": ext_lower.lstrip("."),
                 "outfmt": outfmt,
+                # Forward optional CPUcoin JWT to server tools
+                "authToken": os.environ.get("CPUCOIN_JWT"),
                 "noRasterize": True # this is only looked at for text documents and pdf output, so OK to always set to true, even for images
             }
 

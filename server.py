@@ -7,6 +7,7 @@ from urllib.parse import quote_plus, urlparse
 
 from fastmcp import FastMCP
 from fastmcp.utilities.types import Image, File
+from fastmcp.server.auth.providers.jwt import JWTVerifier
 from typing import Any, Dict, List
 
 BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
@@ -15,7 +16,50 @@ BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING)
 
+# Instantiate MCP server
 mcp = FastMCP("TweekIT MCP Server - normalize almost any file for AI ingestion")
+
+# Expose external authentication metadata so MCP clients can discover
+# and complete auth via an external provider (CPUcoin).
+#
+# Notes:
+# - We attempt to set metadata in a backwards-compatible way without
+#   depending on any specific FastMCP method signature.
+# - Clients that understand these fields can launch a browser-based
+#   auth flow against the provider and attach resulting credentials.
+AUTH_BASE = os.getenv("AUTH_PROVIDER_BASE", "https://auth.cpucoin.io")
+AUTH_METADATA: Dict[str, Any] = {
+    # Generic auth hint understood by some MCP clients
+    "auth": {
+        "type": "external",
+        "provider": "CPUcoin",
+        "auth_url": AUTH_BASE,
+    },
+    # Alternative shape used by some clients/tooling
+    "authentication": [
+        {
+            "type": "external",
+            "name": "CPUcoin",
+            "auth_url": AUTH_BASE,
+            # Optional display and docs links if a client surfaces them
+            "display_name": "Sign in with CPUcoin",
+            "instructions_url": f"{AUTH_BASE}/docs",
+        }
+    ],
+}
+
+# Best-effort metadata attachment; avoid hard dependency on a specific API.
+try:
+    if hasattr(mcp, "metadata") and isinstance(getattr(mcp, "metadata"), dict):
+        mcp.metadata.update(AUTH_METADATA)  # type: ignore[attr-defined]
+    elif hasattr(mcp, "set_metadata"):
+        # Some FastMCP versions expose an explicit setter
+        mcp.set_metadata(AUTH_METADATA)  # type: ignore[attr-defined]
+    else:
+        # Fall back to assigning an attribute (harmless if unused)
+        setattr(mcp, "metadata", AUTH_METADATA)
+except Exception as e:
+    logger.warning(f"Unable to set MCP auth metadata: {e}")
 
 @mcp.resource("config://tweekit-version")
 async def version() -> str:
@@ -27,7 +71,12 @@ async def version() -> str:
         return response.text
 
 @mcp.tool()
-async def doctype(apiKey: str, apiSecret: str, extension: str = "*") -> Dict[str, Any]:
+async def doctype(
+    apiKey: str,
+    apiSecret: str,
+    extension: str = "*",
+    authToken: str | None = None,
+) -> Dict[str, Any]:
     """
     Retrieve a list of supported file formats or map a file extension to its document type.
 
@@ -35,6 +84,7 @@ async def doctype(apiKey: str, apiSecret: str, extension: str = "*") -> Dict[str
         apiKey (str): The API key for authentication.
         apiSecret (str): The API secret for authentication.
         extension (str): The file extension to query (e.g., 'jpg', 'pdf') or leave off or use '*' to return all supported input formats.
+        authToken (str | None): Optional JWT bearer token from external auth; if provided, forwarded as 'Authorization: Bearer <token>'.
 
     Returns:
         Dict[str, Any]: A dictionary containing the supported file formats or an error message.
@@ -42,7 +92,10 @@ async def doctype(apiKey: str, apiSecret: str, extension: str = "*") -> Dict[str
     url = f"{BASE_URL}doctype"
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            response = await client.get(url, headers={"ApiKey": apiKey, "ApiSecret": apiSecret}, params={"extension": extension})
+            headers: Dict[str, str] = {"ApiKey": apiKey, "ApiSecret": apiSecret}
+            if authToken:
+                headers["Authorization"] = f"Bearer {authToken}"
+            response = await client.get(url, headers=headers, params={"extension": extension})
             response.raise_for_status()  # Raise an exception for HTTP errors
 
             data = response.json()
@@ -68,6 +121,7 @@ async def convert(
     inext: str,
     outfmt: str,
     blob: str,
+    authToken: str | None = None,
     noRasterize: bool = False,
     width: int = 0,
     height: int = 0,
@@ -88,6 +142,7 @@ async def convert(
         inext (str): The input file extension (e.g., 'jpg', 'png').
         outfmt (str): The desired output format. Current supported types include 'jpg', 'png', 'webp', 'bmp', and 'pdf'.
         blob (str): The base64-encoded document data.
+        authToken (str | None): Optional JWT bearer token from external auth; if provided, forwarded as 'Authorization: Bearer <token>'.
         noRasterize (bool, optional): For input document formats that are not raster images, do not rasterize the document - return it as a PDF. (outfmt must be set to pdf). The parameters listed below are ignored when doing document to PDF conversions.
         width (int, optional): The desired width of the output. Defaults to 0 (no resizing).
         height (int, optional): The desired height of the output. Defaults to 0 (no resizing).
@@ -114,6 +169,8 @@ async def convert(
         try:
             client.headers["ApiKey"] = apiKey
             client.headers["ApiSecret"] = apiSecret
+            if authToken:
+                client.headers["Authorization"] = f"Bearer {authToken}"
             response = await client.post(url, json={
                 "Fmt": outfmt,
                 "Width": width,
