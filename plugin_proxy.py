@@ -7,9 +7,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 DEFAULT_BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
-BASE_URL = os.getenv("TWEAKIT_API_BASE_URL", DEFAULT_BASE_URL).rstrip("/") + "/"
-DEFAULT_API_KEY = os.getenv("TWEAKIT_API_KEY")
-DEFAULT_API_SECRET = os.getenv("TWEAKIT_API_SECRET")
+BASE_URL = os.getenv("TWEEKIT_API_BASE_URL", DEFAULT_BASE_URL).rstrip("/") + "/"
+DEFAULT_API_KEY = os.getenv("TWEEKIT_API_KEY")
+DEFAULT_API_SECRET = os.getenv("TWEEKIT_API_SECRET")
 PUBLIC_BASE_URL = os.getenv("PLUGIN_PUBLIC_BASE_URL")
 LOGO_URL = os.getenv("PLUGIN_LOGO_URL")
 

@@ -12,12 +12,12 @@
   },
   "environment": [
     {
-      "name": "TWEAKIT_API_KEY",
+      "name": "TWEEKIT_API_KEY",
       "required": true,
       "description": "API key used to authenticate against the upstream TweekIT service."
     },
     {
-      "name": "TWEAKIT_API_SECRET",
+      "name": "TWEEKIT_API_SECRET",
       "required": true,
       "description": "API secret paired with the API key for privileged conversions."
     }

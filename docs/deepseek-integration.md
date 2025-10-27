@@ -12,8 +12,8 @@ python scripts/deepseek_mcp_bridge.py \
   --file path/to/input.pdf \
   --outfmt txt \
   --server https://mcp.tweekit.com/mcp \
-  --api-key "$TWEAKIT_API_KEY" \
-  --api-secret "$TWEAKIT_API_SECRET" \
+  --api-key "$TWEEKIT_API_KEY" \
+  --api-secret "$TWEEKIT_API_SECRET" \
   --output converted.txt
 ```
 
@@ -22,7 +22,7 @@ The script invokes the MCP `convert` tool via `fastmcp.Client`, writing any base
 ## Using the Script in Automation
 - **Python orchestration:** Import `convert_document` from `scripts/deepseek_mcp_bridge` and call it inside an async workflow tied to DeepSeek completions.
 - **CLI pipelines:** Run the script inside a shell pipeline before invoking DeepSeek’s `chat.completions` endpoint, piping plain text output back to the model.
-- **Credential handling:** Provide `TWEAKIT_API_KEY`/`TWEAKIT_API_SECRET` via environment variables or parameter flags; rotate keys through your secrets manager.
+- **Credential handling:** Provide `TWEEKIT_API_KEY`/`TWEEKIT_API_SECRET` via environment variables or parameter flags; rotate keys through your secrets manager.
 
 ## Future Native Integration
 - Monitor DeepSeek announcements for MCP or plugin support. Once official hooks exist, reuse the same configuration (`https://mcp.tweekit.com/mcp`) and tool names (`version`, `doctype`, `convert`).

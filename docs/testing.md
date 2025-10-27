@@ -37,7 +37,7 @@ To capture artifacts for visual inspection, add:
 Credential options:
 - Provide `--api-key/--api-secret` on the CLI, or
 - Supply `--credentials-file` (JSON or `.env` style). Add `--save-credentials` the first time to persist prompts to `.tweekit_credentials`, or
-- Set environment variables (`TWEAKIT_API_KEY`, `TWEAKIT_API_SECRET`).
+- Set environment variables (`TWEEKIT_API_KEY`, `TWEEKIT_API_SECRET`).
 
 If the output directory already contains files, the script prompts to clear them (use `--auto-clear-output` to skip the prompt in CI). The repository ignores everything under `tests/assets/`, `tests/output/`, and `.tweekit_credentials`, so sample inputs, generated artifacts, and local secrets never ship with staging/production deploys.
 
@@ -89,7 +89,7 @@ Run these steps for release candidates, major refactors, or whenever UI/manifest
 ### 2.2 Claude Desktop Bundle
 1. Build bundle: `uv run python scripts/build_claude_bundle.py --version <x.y.z>`.
 2. Import `.mcpb` in Claude Desktop (macOS + Windows smoke).
-3. Set env vars inside Claude (`TWEAKIT_API_KEY`, `TWEAKIT_API_SECRET`).
+3. Set env vars inside Claude (`TWEEKIT_API_KEY`, `TWEEKIT_API_SECRET`).
 4. Ask Claude to list tools; ensure `convert_url` metadata appears.
 5. Request a conversion (DOC ➜ PDF, PNG ➜ PNG) and ensure the returned files open.
 

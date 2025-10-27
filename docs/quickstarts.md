@@ -6,7 +6,7 @@ These examples help developers call the TweekIT MCP server from Python or Node.j
 ### Requirements
 - Python 3.10+
 - `pip install fastmcp`
-- Set `TWEAKIT_API_KEY` and `TWEAKIT_API_SECRET`
+- Set `TWEEKIT_API_KEY` and `TWEEKIT_API_SECRET`
 
 ### Run the Example
 ```bash
@@ -21,7 +21,7 @@ The script prints the available tools and outputs the converted payload. For reu
 ### Requirements
 - Node.js 18+
 - `npm install @modelcontextprotocol/sdk`
-- Set `TWEAKIT_API_KEY` and `TWEAKIT_API_SECRET`
+- Set `TWEEKIT_API_KEY` and `TWEEKIT_API_SECRET`
 
 ### Run the Example
 ```bash

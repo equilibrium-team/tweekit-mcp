@@ -7,9 +7,9 @@ import pytest
 
 @pytest.fixture
 def proxy_app(monkeypatch) -> Generator:
-    monkeypatch.setenv("TWEAKIT_API_BASE_URL", "https://api.test/")
-    monkeypatch.setenv("TWEAKIT_API_KEY", "test-key")
-    monkeypatch.setenv("TWEAKIT_API_SECRET", "test-secret")
+    monkeypatch.setenv("TWEEKIT_API_BASE_URL", "https://api.test/")
+    monkeypatch.setenv("TWEEKIT_API_KEY", "test-key")
+    monkeypatch.setenv("TWEEKIT_API_SECRET", "test-secret")
     monkeypatch.setenv("PLUGIN_PUBLIC_BASE_URL", "https://plugin.test")
     monkeypatch.delenv("PLUGIN_LOGO_URL", raising=False)
 
@@ -20,9 +20,9 @@ def proxy_app(monkeypatch) -> Generator:
 
 @pytest.fixture
 def proxy_module(monkeypatch):
-    monkeypatch.setenv("TWEAKIT_API_BASE_URL", "https://api.test/")
-    monkeypatch.setenv("TWEAKIT_API_KEY", "test-key")
-    monkeypatch.setenv("TWEAKIT_API_SECRET", "test-secret")
+    monkeypatch.setenv("TWEEKIT_API_BASE_URL", "https://api.test/")
+    monkeypatch.setenv("TWEEKIT_API_KEY", "test-key")
+    monkeypatch.setenv("TWEEKIT_API_SECRET", "test-secret")
     monkeypatch.setenv("PLUGIN_PUBLIC_BASE_URL", "https://plugin.test")
     monkeypatch.delenv("PLUGIN_LOGO_URL", raising=False)
 

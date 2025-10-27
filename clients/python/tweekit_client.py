@@ -35,8 +35,8 @@ class TweekitClient:
         api_secret: str | None = None,
     ) -> None:
         self.server_url = server_url or os.getenv("TWEEKIT_MCP_SERVER", "https://mcp.tweekit.com/mcp")
-        self.api_key = api_key or os.getenv("TWEAKIT_API_KEY")
-        self.api_secret = api_secret or os.getenv("TWEAKIT_API_SECRET")
+        self.api_key = api_key or os.getenv("TWEEKIT_API_KEY")
+        self.api_secret = api_secret or os.getenv("TWEEKIT_API_SECRET")
         self._client: Client | None = None
 
     async def __aenter__(self) -> "TweekitClient":
@@ -145,12 +145,12 @@ class TweekitClient:
 
     def _require_key(self) -> str:
         if not self.api_key:
-            raise RuntimeError("Missing TWEAKIT_API_KEY.")
+            raise RuntimeError("Missing TWEEKIT_API_KEY.")
         return self.api_key
 
     def _require_secret(self) -> str:
         if not self.api_secret:
-            raise RuntimeError("Missing TWEAKIT_API_SECRET.")
+            raise RuntimeError("Missing TWEEKIT_API_SECRET.")
         return self.api_secret
 
     @staticmethod
