@@ -51,11 +51,44 @@ def test_convert_file(tmp_path, monkeypatch):
     async def runner():
         async with client:
             result = await client.convert_file(input_path, outfmt="txt")
-        return result
+            calls = list(client._client.calls)
+        return result, calls
 
-    result = asyncio.run(runner())
+    result, calls = asyncio.run(runner())
 
     assert result["status"] == "ok"
+    assert calls[-1][0] == "convert"
+    assert calls[-1][1]["bgColor"] == ""
+
+
+def test_convert_url(monkeypatch):
+    client = tweekit_client.TweekitClient(
+        server_url="https://mcp.test/mcp",
+        api_key="key",
+        api_secret="secret",
+    )
+
+    async def runner():
+        async with client:
+            result = await client.convert_url(
+                url="https://example.com/file.png",
+                outfmt="webp",
+                inext="png",
+                width=42,
+                height=84,
+                fetch_headers={"Authorization": "Bearer token"},
+            )
+            calls = list(client._client.calls)
+        return result, calls
+
+    result, calls = asyncio.run(runner())
+
+    assert result["status"] == "ok"
+    name, payload = calls[-1]
+    assert name == "convert_url"
+    assert payload["inext"] == "png"
+    assert payload["width"] == 42
+    assert payload["fetchHeaders"] == {"Authorization": "Bearer token"}
 
 
 def test_missing_credentials_raises(tmp_path, monkeypatch):

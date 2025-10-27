@@ -45,7 +45,7 @@ Continue stores MCP servers in `~/.continue/config.json`. Add the following entr
 
 After saving:
 1. Reload the Continue extension.
-2. Use the Continue panel → Tools tab to verify `tweekit` shows `version`, `doctype`, and `convert`.
+2. Use the Continue panel → Tools tab to verify `tweekit` shows `version`, `doctype`, `convert`, and `convert_url`.
 3. Document any workspace-specific env var requirements in your team README.
 
 ## Other IDE Assistants

@@ -15,7 +15,7 @@ python examples/python/quickstart.py \
   --outfmt txt
 ```
 
-The script prints the available tools and outputs the converted payload. For reusable code inside your own projects, import `clients.python.tweekit_client.TweekitClient` and call `convert_file` directly.
+The script prints the available tools and outputs the converted payload. For reusable code inside your own projects, import `clients.python.tweekit_client.TweekitClient` and call `convert_file` or `convert_url` directly.
 
 ## Node.js
 ### Requirements
