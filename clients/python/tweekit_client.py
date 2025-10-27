@@ -86,11 +86,56 @@ class TweekitClient:
             "width": width,
             "height": height,
             "page": page,
-            "bgcolor": bgcolor,
+            "bgColor": bgcolor,
         }
         result = await client.call_tool("convert", payload)
         if result.is_error:
             raise RuntimeError("TweekIT convert tool returned an error response.")
+        return result.data or result.structured_content or [block.model_dump() for block in result.content]
+
+    async def convert_url(
+        self,
+        url: str,
+        outfmt: str,
+        *,
+        inext: str | None = None,
+        no_rasterize: bool = False,
+        width: int = 0,
+        height: int = 0,
+        x1: int = 0,
+        y1: int = 0,
+        x2: int = 0,
+        y2: int = 0,
+        page: int = 1,
+        alpha: bool = True,
+        bgcolor: str = "",
+        fetch_headers: dict[str, str] | None = None,
+    ) -> Any:
+        client = self._ensure_client()
+        payload: dict[str, Any] = {
+            "apiKey": self._require_key(),
+            "apiSecret": self._require_secret(),
+            "url": url,
+            "outfmt": outfmt,
+            "noRasterize": no_rasterize,
+            "width": width,
+            "height": height,
+            "x1": x1,
+            "y1": y1,
+            "x2": x2,
+            "y2": y2,
+            "page": page,
+            "alpha": alpha,
+            "bgColor": bgcolor,
+        }
+        if inext:
+            payload["inext"] = inext
+        if fetch_headers:
+            payload["fetchHeaders"] = fetch_headers
+
+        result = await client.call_tool("convert_url", payload)
+        if result.is_error:
+            raise RuntimeError("TweekIT convert_url tool returned an error response.")
         return result.data or result.structured_content or [block.model_dump() for block in result.content]
 
     def _ensure_client(self) -> Client:
