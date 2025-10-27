@@ -10,13 +10,13 @@ This document explains how to run the FastAPI proxy, publish the ChatGPT plugin 
 ## Environment Variables
 | Variable | Purpose | Example |
 | --- | --- | --- |
-| `TWEAKIT_API_BASE_URL` | Override upstream TweekIT API root (optional). | `https://dapp.tweekit.io/tweekit/api/image/` |
-| `TWEAKIT_API_KEY` | Default API key for proxy requests. | `abc123` |
-| `TWEAKIT_API_SECRET` | Default API secret for proxy requests. | `def456` |
+| `TWEEKIT_API_BASE_URL` | Override upstream TweekIT API root (optional). | `https://dapp.tweekit.io/tweekit/api/image/` |
+| `TWEEKIT_API_KEY` | Default API key for proxy requests. | `abc123` |
+| `TWEEKIT_API_SECRET` | Default API secret for proxy requests. | `def456` |
 | `PLUGIN_PUBLIC_BASE_URL` | Public HTTPS origin hosting the proxy. | `https://plugin.tweekit.com` |
 | `PLUGIN_LOGO_URL` | Absolute URL for plugin logo. | `https://tweekit.com/assets/logo.png` |
 
-> If you omit `TWEAKIT_API_KEY`/`SECRET`, each request must include either a `Bearer` token in `Authorization` or both `X-Api-Key` and `X-Api-Secret` headers.
+> If you omit `TWEEKIT_API_KEY`/`SECRET`, each request must include either a `Bearer` token in `Authorization` or both `X-Api-Key` and `X-Api-Secret` headers.
 
 ## Run the Proxy Locally
 ```bash
@@ -30,13 +30,13 @@ Expose the service via HTTPS (e.g., `ngrok http 8000`) so ChatGPT can reach it.
 
 ## Verify Endpoints
 ```bash
-curl -H "Authorization: Bearer $TWEAKIT_API_KEY" \
+curl -H "Authorization: Bearer $TWEEKIT_API_KEY" \
   "https://plugin.tweekit.com/version"
 
-curl -H "Authorization: Bearer $TWEAKIT_API_KEY" \
+curl -H "Authorization: Bearer $TWEEKIT_API_KEY" \
   "https://plugin.tweekit.com/doctype?ext=pdf"
 
-curl -X POST -H "Authorization: Bearer $TWEAKIT_API_KEY" \
+curl -X POST -H "Authorization: Bearer $TWEEKIT_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"inext": "png", "outfmt": "pdf", "blob": "<base64>"}' \
   "https://plugin.tweekit.com/convert"

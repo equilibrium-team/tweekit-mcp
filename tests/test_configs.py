@@ -14,7 +14,7 @@ def test_cursor_config_structure():
     server = config["mcpServers"]["tweekit"]
     assert server["type"] == "http"
     assert server["url"].startswith("https://")
-    assert "${TWEAKIT_API_KEY}" in server["headers"]["ApiKey"]
+    assert "${TWEEKIT_API_KEY}" in server["headers"]["ApiKey"]
 
 
 def test_continue_config_structure():

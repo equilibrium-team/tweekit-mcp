@@ -37,7 +37,7 @@
 - Keep diffs focused; avoid unrelated refactors or vendored churn unless accompanied by updated wheels/reports.
 
 ## Security & Configuration Tips
-- Never commit API credentials. Source `TWEAKIT_API_KEY` / `TWEAKIT_API_SECRET` (and Cloud Run secrets) from env managers.
+- Never commit API credentials. Source `TWEEKIT_API_KEY` / `TWEEKIT_API_SECRET` (and Cloud Run secrets) from env managers.
 - Use `firebase login` / `gcloud auth login` locally; leave long-lived tokens out of repo scripts.
 - Watch `functions/packages/` size after vendoring; regenerate wheels whenever requirements change.
 - Enforce reasonable HTTP timeouts and validate external inputs before proxying to TweekIT.

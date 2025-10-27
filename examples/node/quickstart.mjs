@@ -15,8 +15,8 @@ import { argv } from "node:process";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
 const DEFAULT_SERVER = process.env.TWEEKIT_MCP_SERVER ?? "https://mcp.tweekit.com/mcp";
-const API_KEY = process.env.TWEAKIT_API_KEY;
-const API_SECRET = process.env.TWEAKIT_API_SECRET;
+const API_KEY = process.env.TWEEKIT_API_KEY;
+const API_SECRET = process.env.TWEEKIT_API_SECRET;
 
 function parseArgs() {
   const args = new URLSearchParams();
@@ -59,8 +59,8 @@ async function main() {
   const client = await Client.connect({
     url: DEFAULT_SERVER,
     headers: {
-      ApiKey: requireCredential(API_KEY, "TWEAKIT_API_KEY"),
-      ApiSecret: requireCredential(API_SECRET, "TWEAKIT_API_SECRET"),
+      ApiKey: requireCredential(API_KEY, "TWEEKIT_API_KEY"),
+      ApiSecret: requireCredential(API_SECRET, "TWEEKIT_API_SECRET"),
     },
   });
 

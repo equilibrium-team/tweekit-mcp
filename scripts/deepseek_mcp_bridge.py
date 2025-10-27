@@ -78,8 +78,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def resolve_credentials(args: argparse.Namespace) -> tuple[str, str]:
-    api_key = args.api_key or os.getenv("TWEAKIT_API_KEY")
-    api_secret = args.api_secret or os.getenv("TWEAKIT_API_SECRET")
+    api_key = args.api_key or os.getenv("TWEEKIT_API_KEY")
+    api_secret = args.api_secret or os.getenv("TWEEKIT_API_SECRET")
     if not api_key or not api_secret:
         raise SystemExit("Missing TweekIT credentials. Provide --api-key/--api-secret or set env vars.")
     return api_key, api_secret

@@ -92,8 +92,8 @@ def test_convert_url(monkeypatch):
 
 
 def test_missing_credentials_raises(tmp_path, monkeypatch):
-    monkeypatch.delenv("TWEAKIT_API_KEY", raising=False)
-    monkeypatch.delenv("TWEAKIT_API_SECRET", raising=False)
+    monkeypatch.delenv("TWEEKIT_API_KEY", raising=False)
+    monkeypatch.delenv("TWEEKIT_API_SECRET", raising=False)
 
     doc = tmp_path / "doc.txt"
     doc.write_text("hello")

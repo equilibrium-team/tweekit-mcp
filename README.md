@@ -292,7 +292,7 @@ Examples
   const tools = await client.listTools();
   const res = await client.callTool({
     name: "doctype",
-    arguments: { ext: "pdf", apiKey: process.env.TWEAKIT_API_KEY, apiSecret: process.env.TWEAKIT_API_SECRET },
+    arguments: { ext: "pdf", apiKey: process.env.TWEEKIT_API_KEY, apiSecret: process.env.TWEEKIT_API_SECRET },
   });
   console.log(res);
   ```
@@ -311,8 +311,8 @@ Examples
           out = await c.call_tool(
               "convert",
               {
-                  "apiKey": os.environ["TWEAKIT_API_KEY"],
-                  "apiSecret": os.environ["TWEAKIT_API_SECRET"],
+                  "apiKey": os.environ["TWEEKIT_API_KEY"],
+                  "apiSecret": os.environ["TWEEKIT_API_SECRET"],
                   "inext": "png",
                   "outfmt": "txt",
                   "blob": "<base64>",
@@ -387,15 +387,15 @@ Cursor loads MCP configuration from `~/.cursor/mcp.json`. To enable the hosted T
       "type": "http",
       "url": "https://mcp.tweekit.com/mcp",
       "headers": {
-        "ApiKey": "${TWEAKIT_API_KEY}",
-        "ApiSecret": "${TWEAKIT_API_SECRET}"
+        "ApiKey": "${TWEEKIT_API_KEY}",
+        "ApiSecret": "${TWEEKIT_API_SECRET}"
       }
     }
   }
 }
 ```
 
-1. Export `TWEAKIT_API_KEY` and `TWEAKIT_API_SECRET` in your shell (or replace the placeholders with literal values).
+1. Export `TWEEKIT_API_KEY` and `TWEEKIT_API_SECRET` in your shell (or replace the placeholders with literal values).
 2. Restart Cursor and run “List tools” to confirm `version`, `doctype`, `convert`, and `convert_url` are available.
 3. Optional: host the JSON internally and surface an “Add to Cursor” deep-link for teammates.
 
@@ -410,8 +410,8 @@ Continue (VS Code / JetBrains) stores MCP servers in `~/.continue/config.json`. 
       "type": "streamable-http",
       "url": "https://mcp.tweekit.com/mcp",
       "headers": {
-        "ApiKey": "${TWEAKIT_API_KEY}",
-        "ApiSecret": "${TWEAKIT_API_SECRET}"
+        "ApiKey": "${TWEEKIT_API_KEY}",
+        "ApiSecret": "${TWEEKIT_API_SECRET}"
       }
     }
   }

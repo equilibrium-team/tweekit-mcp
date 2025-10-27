@@ -238,11 +238,21 @@ async def _convert_impl(
             }
             if message:
                 error_payload["details"] = message
-            if e.request is not None and e.request.headers.get("content-type") == "application/json":
+            if e.request is not None and (e.request.headers.get("content-type") or "").startswith("application/json"):
+                payload_bytes = None
                 try:
-                    payload_json = e.request.json()
-                except Exception:
-                    payload_json = None
+                    payload_bytes = e.request.content  # type: ignore[attr-defined]
+                except AttributeError:
+                    try:
+                        payload_bytes = e.request.read()
+                    except Exception:
+                        payload_bytes = None
+                payload_json = None
+                if payload_bytes:
+                    try:
+                        payload_json = json.loads(payload_bytes.decode("utf-8"))
+                    except Exception:
+                        payload_json = None
                 if isinstance(payload_json, dict):
                     error_payload["tweekitPayload"] = {
                         "DocDataType": payload_json.get("DocDataType"),

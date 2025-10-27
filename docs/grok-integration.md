@@ -13,7 +13,7 @@ This document captures the current path to enable TweekIT MCP inside xAI’s Gro
    - **Name:** TweekIT Converter
    - **URL:** `https://mcp.tweekit.com/mcp` (update as needed)
    - **Transport:** `streamable-http`
-   - Provide `TWEAKIT_API_KEY`/`SECRET` in the extension’s credential fields.
+   - Provide `TWEEKIT_API_KEY`/`SECRET` in the extension’s credential fields.
 3. Enable Grok (plus any other supported chat UIs) inside the extension.
 4. Within the Grok interface, invoke TweekIT tools using the extension’s command palette or slash commands.
 
