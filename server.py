@@ -1,13 +1,17 @@
 import asyncio
-import httpx
+import base64
+import json
 import logging
+import mimetypes
 import os
 import re
+from pathlib import Path
 from urllib.parse import quote_plus, urlparse
 
+import httpx
 from fastmcp import FastMCP
-from fastmcp.utilities.types import Image, File
-from typing import Any, Dict, List
+from fastmcp.utilities.types import File, Image
+from typing import Any, Dict, List, Optional
 
 BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
 #BASE_URL = "http://localhost:16377/api/image/"
@@ -15,9 +19,74 @@ BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING)
 
-SERVER_VERSION = "0.2.1"
+SERVER_VERSION = "1.1.0"
 
 mcp = FastMCP("TweekIT MCP Server - normalize almost any file for AI ingestion")
+
+_EXTENSION_ALIASES = {
+    "jpeg": "jpg",
+    "jpe": "jpg",
+    "tif": "tiff",
+    "htm": "html",
+}
+
+
+def _normalize_extension(ext: str) -> str:
+    normalized = ext.strip().lower().lstrip(".")
+    if not normalized:
+        return ""
+    return _EXTENSION_ALIASES.get(normalized, normalized)
+
+
+def _resolve_extension(url: str, override: Optional[str], content_type: Optional[str]) -> str:
+    """Determine the best input extension for a downloaded file."""
+    if override:
+        candidate = _normalize_extension(override)
+        if candidate:
+            return candidate
+
+    path_ext = _normalize_extension(Path(urlparse(url).path).suffix)
+    if path_ext:
+        return path_ext
+
+    if content_type:
+        mime = content_type.split(";", 1)[0].strip()
+        guessed = mimetypes.guess_extension(mime) or ""
+        normalized = _normalize_extension(guessed)
+        if normalized:
+            return normalized
+        if "/" in mime:
+            subtype = _normalize_extension(mime.split("/")[-1])
+            if subtype:
+                return subtype
+
+    return "bin"
+
+
+def _extract_error_details(response: Optional[httpx.Response]) -> str:
+    if response is None:
+        return ""
+    hints = {
+        k: v
+        for k, v in (response.headers or {}).items()
+        if k.lower().startswith("x-mediagen") or k.lower().startswith("x-tweekit")
+    }
+
+    try:
+        data = response.json()
+        if isinstance(data, dict):
+            message = data.get("message") or data.get("error")
+            if hints:
+                data["debugHeaders"] = hints
+            return message or json.dumps(data)
+        if isinstance(data, list):
+            return json.dumps(data)
+    except Exception:
+        pass
+    text = response.text.strip() if response.text else ""
+    if hints and not text:
+        text = json.dumps(hints)
+    return text
 
 @mcp.resource("config://tweekit-version")
 async def version() -> str:
@@ -69,8 +138,7 @@ async def doctype(apiKey: str, apiSecret: str, extension: str = "*") -> Dict[str
             print(f"An unexpected error occurred: {e}")
             return {"error": f"An unexpected error occurred: {e}"}
 
-@mcp.tool()
-async def convert(
+async def _convert_impl(
     apiKey: str,
     apiSecret: str,
     inext: str,
@@ -139,26 +207,202 @@ async def convert(
             })
             response.raise_for_status()  # Raise an exception for HTTP errors
 
-            content_type = response.headers.get("content-type")
-            if content_type:
-                if "image/" in content_type:
-                    image_format = content_type.split("/")[-1]
-                    return Image(data=response.content, format=image_format)
-                elif content_type == "application/pdf":
-                    return File(data=response.content, format="pdf")
+            content_type = response.headers.get("content-type") or ""
+            lowered_ct = content_type.lower()
+            if lowered_ct.startswith("image/"):
+                image_format = lowered_ct.split("/")[-1]
+                return Image(data=response.content, format=image_format)
+            if lowered_ct == "application/pdf":
+                return File(data=response.content, format="pdf")
+            if "json" in lowered_ct:
+                try:
+                    return response.json()
+                except Exception:
+                    pass
+            if lowered_ct.startswith("application/") or lowered_ct == "application/octet-stream":
+                ext = outfmt.lower().strip(".") or "bin"
+                return File(data=response.content, format=ext)
 
-            # Default case if content type is unknown
-            return {"error": f"Unsupported content type in response: '{content_type}'"}
+            # Attempt to surface TweekIT error payloads even if content type is unexpected
+            error_details = _extract_error_details(response)
+            if error_details:
+                return {"error": error_details}
+
+            return {"error": f"Unsupported content type in response: '{content_type or 'unknown'}'"}
 
         except httpx.HTTPStatusError as e:
-            print(f"HTTP error fetching document from {url}: {e}")
-            return {"error": f"HTTP error: {e.response.status_code}"}
+            message = _extract_error_details(e.response)
+            status = getattr(e.response, "status_code", "unknown")
+            error_payload: Dict[str, Any] = {
+                "error": f"HTTP {status} from TweekIT",
+            }
+            if message:
+                error_payload["details"] = message
+            if e.request is not None and e.request.headers.get("content-type") == "application/json":
+                try:
+                    payload_json = e.request.json()
+                except Exception:
+                    payload_json = None
+                if isinstance(payload_json, dict):
+                    error_payload["tweekitPayload"] = {
+                        "DocDataType": payload_json.get("DocDataType"),
+                        "Fmt": payload_json.get("Fmt"),
+                    }
+            logger.warning("TweekIT convert error (%s): %s", status, message or str(e))
+            return error_payload
         except httpx.RequestError as e:
             print(f"Network error fetching document from {url}: {e}")
             return {"error": "Network error"}
         except Exception as e:
             print(f"An unexpected error occurred: {e}")
             return {"error": f"An unexpected error occurred: {e}"}
+
+
+@mcp.tool()
+async def convert(
+    apiKey: str,
+    apiSecret: str,
+    inext: str,
+    outfmt: str,
+    blob: str,
+    noRasterize: bool = False,
+    width: int = 0,
+    height: int = 0,
+    x1: int = 0,
+    y1: int = 0,
+    x2: int = 0,
+    y2: int = 0,
+    page: int = 1,
+    alpha: bool = True,
+    bgColor: str = "",
+) -> Any:
+    return await _convert_impl(
+        apiKey=apiKey,
+        apiSecret=apiSecret,
+        inext=inext,
+        outfmt=outfmt,
+        blob=blob,
+        noRasterize=noRasterize,
+        width=width,
+        height=height,
+        x1=x1,
+        y1=y1,
+        x2=x2,
+        y2=y2,
+        page=page,
+        alpha=alpha,
+        bgColor=bgColor,
+    )
+
+
+async def _convert_url_impl(
+    apiKey: str,
+    apiSecret: str,
+    url: str,
+    outfmt: str,
+    inext: Optional[str] = None,
+    noRasterize: bool = False,
+    width: int = 0,
+    height: int = 0,
+    x1: int = 0,
+    y1: int = 0,
+    x2: int = 0,
+    y2: int = 0,
+    page: int = 1,
+    alpha: bool = True,
+    bgColor: str = "",
+    fetchHeaders: Optional[Dict[str, str]] = None,
+) -> Any:
+    """Download a remote document and convert it via TweekIT."""
+
+    headers = None
+    if fetchHeaders:
+        headers = {str(k): str(v) for k, v in fetchHeaders.items()}
+
+    timeout = httpx.Timeout(20.0, read=60.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        status = getattr(e.response, "status_code", "unknown")
+        message = _extract_error_details(e.response)
+        error_payload = {
+            "error": f"Failed to download remote content. Status: {status}",
+        }
+        if message:
+            error_payload["details"] = message
+        logger.warning("HTTP error downloading '%s': status=%s details=%s", url, status, message)
+        return error_payload
+    except httpx.RequestError as e:
+        logger.error("Network error downloading '%s': %s", url, e)
+        return {"error": f"Network error downloading remote content: {e}"}
+    except Exception as e:
+        logger.exception("Unexpected error downloading '%s'", url)
+        return {"error": f"Unexpected error downloading remote content: {e}"}
+
+    if not response.content:
+        return {"error": "Downloaded content was empty."}
+
+    resolved_inext = _resolve_extension(url, inext, response.headers.get("content-type"))
+    blob = base64.b64encode(response.content).decode("ascii")
+
+    return await _convert_impl(
+        apiKey=apiKey,
+        apiSecret=apiSecret,
+        inext=resolved_inext,
+        outfmt=outfmt,
+        blob=blob,
+        noRasterize=noRasterize,
+        width=width,
+        height=height,
+        x1=x1,
+        y1=y1,
+        x2=x2,
+        y2=y2,
+        page=page,
+        alpha=alpha,
+        bgColor=bgColor,
+    )
+
+
+@mcp.tool()
+async def convert_url(
+    apiKey: str,
+    apiSecret: str,
+    url: str,
+    outfmt: str,
+    inext: Optional[str] = None,
+    noRasterize: bool = False,
+    width: int = 0,
+    height: int = 0,
+    x1: int = 0,
+    y1: int = 0,
+    x2: int = 0,
+    y2: int = 0,
+    page: int = 1,
+    alpha: bool = True,
+    bgColor: str = "",
+    fetchHeaders: Optional[Dict[str, str]] = None,
+) -> Any:
+    return await _convert_url_impl(
+        apiKey=apiKey,
+        apiSecret=apiSecret,
+        url=url,
+        outfmt=outfmt,
+        inext=inext,
+        noRasterize=noRasterize,
+        width=width,
+        height=height,
+        x1=x1,
+        y1=y1,
+        x2=x2,
+        y2=y2,
+        page=page,
+        alpha=alpha,
+        bgColor=bgColor,
+        fetchHeaders=fetchHeaders,
+    )
 
 
 @mcp.tool()
