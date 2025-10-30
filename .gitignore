@@ -220,3 +220,4 @@ tests/output/*
 .gcloud-config/
 .DS_Store
 tests/.DS_Store
+functions/packages/
