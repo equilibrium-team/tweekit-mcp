@@ -214,3 +214,9 @@ tests/output/*
 
 # Local credentials
 .tweekit_credentials
+.tweekit_output_dirs
+
+# Local gcloud/Firebase config and host OS cruft
+.gcloud-config/
+.DS_Store
+tests/.DS_Store

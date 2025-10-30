@@ -2,7 +2,7 @@
 
 *Ingest and Convert Just About Any Filetype Into AI Workflows*
 
-Current version: v1.1.0
+Current version: v1.5.0
 
 ## Overview
 
@@ -69,6 +69,7 @@ The entire process happens in seconds, and your workflow never sees an incompati
 - [Demo + Show Code](#demo--show-code)
 - [Error Handling and Troubleshooting](#error-handling-and-troubleshooting)
 - [Advanced Topics](#advanced-topics)
+- [Registry Readiness](#registry-readiness)
 - [Resources](#resources)
 
 ## Requirements
@@ -232,16 +233,18 @@ bash scripts/deploy_cloud_run.sh local --version dev
 Deploy to staging (creates/updates the `tweekit-mcp-stage` service):
 
 ```bash
-bash scripts/deploy_cloud_run.sh stage --version 1.2.0
+bash scripts/deploy_cloud_run.sh stage --version 1.5.0
 ```
 
 Deploy to production (updates the `tweekit-mcp` service):
 
 ```bash
-bash scripts/deploy_cloud_run.sh prod --version 1.2.0
+bash scripts/deploy_cloud_run.sh prod --version 1.5.0
 ```
 
 Pass `--project <PROJECT_ID>` if you need to override the active `gcloud` configuration, and `--env-file <path>` to supply Cloud Run environment variables in YAML format.
+
+> The helper scripts never bundle credentials. Always provide your own Google Cloud project, region, and secret sources when running them; Equilibrium’s staging/prod keys live in managed secret stores and are intentionally excluded from this repository.
 
 ## Client Compatibility
 
@@ -488,7 +491,7 @@ Fetches the current version of the TweekIT API. Takes no parameters.
 #### /server-version
 
 Description:
-Returns this MCP server's version string (e.g., `1.1.0`). Takes no parameters.
+Returns this MCP server's version string (e.g., `1.5.0`). Takes no parameters.
 
 ### Tools
 
@@ -878,6 +881,17 @@ In MCP, chain TweekIT transformations before invoking the AI model action.
 - **Reverse Proxy Secrets**: Use a server-side proxy to inject credentials, keeping them out of the browser.
 - **CORS and Domain Restrictions**: Configure your account to only accept widget calls from trusted domains.
 - **Short DocId Lifespans**: Rely on the default 20-minute expiry to limit exposure of uploaded files. (only applies to Rest API’s - For MCP files are only used during lifetime of processing and then purged)
+
+## Registry Readiness
+
+Preparing for MCP registries (Pulse, OpenAI, Anthropic, etc.)? Track the public requirements in [`docs/mcp-pulse-checklist.md`](docs/mcp-pulse-checklist.md). The checklist covers:
+
+- Required artifacts (live endpoints, plugin proxy, Claude bundle, docs, changelog)
+- Automated test expectations (`pytest`, optional staging sweeps)
+- Operational policies (secrets, monitoring, rollback, SLA)
+- Submission packet assets (screenshots, logs, support contact, license references)
+
+Keep the outstanding tasks section current before every submission.
 
 ## Resources
 

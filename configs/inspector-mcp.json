@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "tweekit-local": {
+      "type": "streamable-http",
+      "url": "http://localhost:8080/mcp",
+      "note": "Run `uv run python server.py` (or your local container) before connecting.",
+      "headers": {
+        "ApiKey": "<YOUR_TWEEKIT_API_KEY>",
+        "ApiSecret": "<YOUR_TWEEKIT_API_SECRET>"
+      }
+    },
+    "tweekit-staging": {
+      "type": "streamable-http",
+      "url": "https://mcp.stage.tweekit.com/mcp",
+      "note": "Update to match the staged endpoint when available.",
+      "headers": {
+        "ApiKey": "<YOUR_TWEEKIT_API_KEY>",
+        "ApiSecret": "<YOUR_TWEEKIT_API_SECRET>"
+      }
+    },
+    "tweekit-production": {
+      "type": "streamable-http",
+      "url": "https://mcp.tweekit.com/mcp",
+      "note": "Production MCP endpoint; requires valid API credentials.",
+      "headers": {
+        "ApiKey": "<YOUR_TWEEKIT_API_KEY>",
+        "ApiSecret": "<YOUR_TWEEKIT_API_SECRET>"
+      }
+    }
+  }
+}

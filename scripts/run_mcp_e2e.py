@@ -27,7 +27,9 @@ import asyncio
 import base64
 import contextlib
 import json
+import mimetypes
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -37,7 +39,7 @@ from dataclasses import dataclass
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 from fastmcp import Client
 
@@ -146,22 +148,88 @@ def save_response_artifact(
 
 
 def extract_bytes_and_format(block, default_format: str | None) -> tuple[bytes | None, str | None]:
-    fmt = getattr(block, "format", None) or default_format
+    fmt_hint = getattr(block, "format", None) or default_format
+
     raw = getattr(block, "data", None)
     raw_bytes = coerce_to_bytes(raw)
-    if raw_bytes is None:
-        image_payload = getattr(block, "image", None)
-        if image_payload is not None:
-            fmt = getattr(image_payload, "format", None) or fmt
-            raw_bytes = coerce_to_bytes(getattr(image_payload, "data", None) or getattr(image_payload, "base64", None))
-    if raw_bytes is None:
-        resource_payload = getattr(block, "resource", None)
-        if resource_payload is not None:
-            fmt = getattr(resource_payload, "format", None) or fmt
-            raw_bytes = coerce_to_bytes(
-                getattr(resource_payload, "data", None) or getattr(resource_payload, "base64", None)
-            )
-    return raw_bytes, fmt
+    if raw_bytes is not None:
+        return raw_bytes, fmt_hint
+
+    image_payload = getattr(block, "image", None)
+    if image_payload is not None:
+        image_fmt = getattr(image_payload, "format", None) or fmt_hint
+        raw_bytes = coerce_to_bytes(
+            getattr(image_payload, "data", None) or getattr(image_payload, "base64", None)
+        )
+        if raw_bytes is not None:
+            return raw_bytes, image_fmt
+
+    resource_payload = getattr(block, "resource", None)
+    raw_bytes, fmt = _extract_resource_bytes(resource_payload, fmt_hint)
+    if raw_bytes is not None:
+        return raw_bytes, fmt
+
+    if getattr(block, "type", None) == "resource":
+        raw_bytes, fmt = _extract_resource_bytes(getattr(block, "resource", None), fmt_hint)
+        if raw_bytes is not None:
+            return raw_bytes, fmt
+
+    return None, fmt_hint
+
+
+def _extract_resource_bytes(resource_payload, fmt_hint: str | None) -> tuple[bytes | None, str | None]:
+    if resource_payload is None:
+        return None, fmt_hint
+
+    mime_type = getattr(resource_payload, "mimeType", None)
+    uri = getattr(resource_payload, "uri", None)
+
+    fmt = (
+        getattr(resource_payload, "format", None)
+        or fmt_hint
+        or _extension_from_mime(mime_type)
+        or _extension_from_uri(uri)
+    )
+
+    for attr in ("data", "base64", "blob"):
+        raw = getattr(resource_payload, attr, None)
+        raw_bytes = coerce_to_bytes(raw)
+        if raw_bytes is not None:
+            return raw_bytes, fmt
+
+    text = getattr(resource_payload, "text", None)
+    if text is not None:
+        return text.encode("utf-8"), fmt or "txt"
+
+    return None, fmt
+
+
+def _extension_from_mime(mime: str | None) -> str | None:
+    if not mime:
+        return None
+    clean = mime.split(";", 1)[0].strip().lower()
+    guessed = mimetypes.guess_extension(clean)
+    if guessed:
+        return guessed.lstrip(".") or None
+    if "/" in clean:
+        subtype = clean.split("/", 1)[-1].strip()
+        if subtype:
+            return subtype
+    return None
+
+
+def _extension_from_uri(uri) -> str | None:
+    if not uri:
+        return None
+    try:
+        parsed = urlparse(str(uri))
+    except Exception:
+        parsed = None
+    path = Path(parsed.path if parsed else str(uri))
+    ext = path.suffix.lstrip(".").lower()
+    if ext:
+        return ext
+    return None
 
 
 def coerce_to_bytes(value) -> bytes | None:
@@ -170,9 +238,16 @@ def coerce_to_bytes(value) -> bytes | None:
     if isinstance(value, (bytes, bytearray)):
         return bytes(value)
     if isinstance(value, str):
+        stripped = value.strip()
         try:
-            return base64.b64decode(value, validate=True)
+            return base64.b64decode(stripped, validate=True)
         except Exception:
+            cleaned = re.sub(r"\s+", "", value)
+            if cleaned and cleaned != stripped:
+                try:
+                    return base64.b64decode(cleaned, validate=True)
+                except Exception:
+                    pass
             return value.encode("utf-8")
     return None
 
@@ -215,9 +290,11 @@ async def exercise_convert(
         "outfmt": spec.outfmt,
         "blob": encode_file(path),
         "noRasterize": spec.no_rasterize,
-        "width": spec.width,
-        "height": spec.height,
     }
+    if spec.width:
+        payload["width"] = spec.width
+    if spec.height:
+        payload["height"] = spec.height
     result = await client.call_tool("convert", payload)
     if result.is_error:
         return TestResult("convert", path.name, False, str(result.error or result.data))
@@ -242,9 +319,11 @@ async def exercise_convert_url(
         "url": url,
         "outfmt": spec.outfmt,
         "noRasterize": spec.no_rasterize,
-        "width": spec.width,
-        "height": spec.height,
     }
+    if spec.width:
+        payload["width"] = spec.width
+    if spec.height:
+        payload["height"] = spec.height
     if inext:
         payload["inext"] = inext
     result = await client.call_tool("convert_url", payload)
@@ -272,6 +351,73 @@ def collect_files(directory: Path) -> Iterable[Path]:
     return sorted(p for p in directory.iterdir() if p.is_file() and p.name != ".gitkeep")
 
 
+def infer_environment(server_url: str) -> str:
+    """Best-effort environment inference from the server URL."""
+
+    parsed = urlparse(server_url)
+    host = (parsed.hostname or "").lower()
+    if host in {"127.0.0.1", "localhost", "0.0.0.0"}:
+        return "local"
+    if "stage" in host:
+        return "stage"
+    return "prod"
+
+
+def load_output_config(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_output_config(path: Path, data: dict[str, str]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2))
+    except OSError as exc:
+        print(f"Warning: failed to persist output directory preferences to {path}: {exc}", file=sys.stderr)
+
+
+def resolve_output_directory(args: argparse.Namespace, environment: str) -> Path | None:
+    if args.output_dir:
+        return args.output_dir
+
+    config_path: Path | None = getattr(args, "output_config", None)
+    if config_path is None:
+        return None
+
+    config = load_output_config(config_path)
+    saved = config.get(environment)
+    if saved:
+        return Path(saved).expanduser()
+
+    default_dir = Path("tests/output") / environment
+    try:
+        response = input(
+            f"No saved output directory for environment '{environment}'. Use '{default_dir}'? [Y/n]: "
+        ).strip().lower()
+    except EOFError:
+        response = ""
+
+    if response in {"", "y", "yes"}:
+        selected = default_dir
+    else:
+        try:
+            custom = input("Enter a directory path to store artifacts (leave blank to skip saving): ").strip()
+        except EOFError:
+            custom = ""
+        if not custom:
+            return None
+        selected = Path(custom).expanduser()
+
+    selected = selected.expanduser()
+    config[environment] = str(selected)
+    save_output_config(config_path, config)
+    return selected
+
+
 async def run_suite(args: argparse.Namespace) -> list[TestResult]:
     api_key, api_secret = resolve_credentials(args)
 
@@ -279,7 +425,9 @@ async def run_suite(args: argparse.Namespace) -> list[TestResult]:
     if not files:
         raise SystemExit(f"No files found in {args.asset_dir}")
 
-    output_dir = prepare_output_dir(args.output_dir, args.auto_clear_output)
+    environment = infer_environment(args.server_url)
+    resolved_output_dir = resolve_output_directory(args, environment)
+    output_dir = prepare_output_dir(resolved_output_dir, args.auto_clear_output)
 
     results: list[TestResult] = []
     async with Client(args.server_url) as client:
@@ -350,6 +498,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Persist prompted credentials to --credentials-file for future runs.",
     )
+    parser.add_argument(
+        "--output-config",
+        type=Path,
+        default=Path(".tweekit_output_dirs"),
+        help="Path to store per-environment output directory preferences.",
+    )
     return parser.parse_args()
 
 
@@ -375,11 +529,54 @@ def detect_extension(path: Path) -> str:
 
 
 def extract_extension_from_metadata(path: Path) -> str | None:
+    mime_ext = _detect_extension_via_file(path)
+    if mime_ext and mime_ext != "bin":
+        return mime_ext
+
     if sys.platform != "darwin":
-        return None
+        return mime_ext
+
+    utis: list[str] = []
+    for attr in ("kMDItemContentType", "kMDItemContentTypeTree"):
+        try:
+            result = subprocess.run(
+                ["mdls", "-raw", "-name", attr, str(path)],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            continue
+
+        data = result.stdout.strip()
+        if not data:
+            continue
+
+        if data.startswith("("):
+            for line in data.splitlines():
+                line = line.strip().strip(",")
+                if not line or line.startswith("(") or line.endswith(")"):
+                    continue
+                utis.append(line.strip('"'))
+        else:
+            utis.append(data.strip('"'))
+
+    seen: set[str] = set()
+    for uti in utis:
+        if not uti or uti in seen:
+            continue
+        seen.add(uti)
+        ext = _extension_from_uti(uti)
+        if ext:
+            return ext
+
+    return mime_ext
+
+
+def _detect_extension_via_file(path: Path) -> str | None:
     try:
         result = subprocess.run(
-            ["mdls", "-raw", "-name", "kMDItemContentTypeTree", str(path)],
+            ["file", "--brief", "--mime-type", str(path)],
             capture_output=True,
             text=True,
             check=True,
@@ -387,30 +584,35 @@ def extract_extension_from_metadata(path: Path) -> str | None:
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
 
-    data = result.stdout.strip()
-    if not data:
+    mime = result.stdout.strip()
+    return _extension_from_mime(mime)
+
+
+def _extension_from_uti(uti: str) -> str | None:
+    normalized = uti.strip().lower()
+    if not normalized:
+        return None
+    if normalized in {"public.data", "public.content"}:
+        return None
+    if normalized.startswith("dyn."):
         return None
 
-    # mdls output example: (
-    #   "public.jpeg",
-    #   "public.image",
-    #   "public.data"
-    # )
-    candidates: list[str] = []
-    for line in data.splitlines():
-        line = line.strip().strip(",")
-        if line.startswith("(") or line.endswith(")") or not line:
-            continue
-        token = line.strip('"')
-        if token and token != "public.data":
-            candidates.append(token)
-
-    for uti in candidates:
-        if "." in uti:
-            ext = uti.split(".")[-1].lower()
-            if ext:
-                return ext
+    candidate = normalized.rsplit(".", 1)[-1]
+    segments = candidate.split("-")
+    for segment in reversed(segments):
+        if _is_reasonable_extension(segment):
+            return segment
+    if _is_reasonable_extension(candidate):
+        return candidate
     return None
+
+
+def _is_reasonable_extension(ext: str) -> bool:
+    if not ext:
+        return False
+    if ext in {"data", "content", "identifier", "bundle"}:
+        return False
+    return bool(re.fullmatch(r"[a-z0-9]{1,8}", ext))
 
 
 def resolve_credentials(args: argparse.Namespace) -> tuple[str, str]:

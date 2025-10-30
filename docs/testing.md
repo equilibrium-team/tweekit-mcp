@@ -34,6 +34,12 @@ To capture artifacts for visual inspection, add:
   --credentials-file .tweekit_credentials
 ```
 
+If you omit `--output-dir`, the runner now infers the environment from `--server-url`, proposes
+`tests/output/<env>` (e.g., `tests/output/local`, `tests/output/stage`, `tests/output/prod`) the
+first time, and stores the accepted path in `.tweekit_output_dirs` for future runs. Use
+`--output-dir` to override on a single run or `--output-config` to point at a different
+preferences file.
+
 Credential options:
 - Provide `--api-key/--api-secret` on the CLI, or
 - Supply `--credentials-file` (JSON or `.env` style). Add `--save-credentials` the first time to persist prompts to `.tweekit_credentials`, or
@@ -47,11 +53,19 @@ Override `--server-url` and keep separate credential files per environment. Exam
 
 ```bash
 uv run python scripts/run_mcp_e2e.py \
-  --server-url https://tweekit-mcp-stage-958133016924.us-west1.run.app/mcp \
+  --server-url https://<your-stage-run-service>.run.app/mcp \
   --credentials-file .tweekit_stage_credentials \
   --include-convert-url \
   --output-dir tests/output/stage
 ```
+
+For the Firebase staging surface, smoke test the hosted rewrite with:
+
+```bash
+uv run python test_server.py --base-url https://<your-stage-hosting>.web.app/mcp
+```
+
+Replace the placeholder URLs with your own staging project IDs. We intentionally keep Equilibrium's staging endpoints private and rotate them after each audit; contributors should do the same for their environments.
 
 ```bash
 uv run python scripts/run_mcp_e2e.py \

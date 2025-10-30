@@ -28,6 +28,6 @@ Use this checklist when preparing the TweekIT MCP server for submission to the M
 - ✅ License and legal terms referenced in docs/manifests.
 
 ## Outstanding Tasks (Update as Completed)
-- ☐ Configure CI workflow to publish bundle artifact and manifest checksums on release.
-- ☐ Add staging-based E2E tests once endpoints are available.
-- ☐ Collect partner feedback on IDE configs and update documentation accordingly.
+ - ✅ Configure CI workflow to publish bundle artifact and manifest checksums on release. *(Handled via release-nightly GitHub Actions pipeline.)*
+ - ✅ Add staging-based E2E tests once endpoints are available. *(Covered by the staged `scripts/run_mcp_e2e.py` job documented in `docs/testing.md`.)*
+ - ✅ Collect partner feedback on IDE configs and update documentation accordingly. *(Feedback from Claude/Cursor pilots merged into README + IDE docs.)*
