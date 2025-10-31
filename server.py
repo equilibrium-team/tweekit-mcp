@@ -160,26 +160,6 @@ async def _convert_impl(
     alpha: bool = True,
     bgColor: str = ""
 ) -> Any:
-    """
-    Convert a base64-encoded document to the specified output format.
-
-    Args:
-        apiKey (str): The API key for authentication.
-        apiSecret (str): The API secret for authentication.
-        inext (str): The input file extension (e.g., 'jpg', 'png').
-        outfmt (str): The desired output format. Current supported types include 'jpg', 'png', 'webp', 'bmp', and 'pdf'.
-        blob (str): The base64-encoded document data.
-        noRasterize (bool, optional): For input document formats that are not raster images, do not rasterize the document - return it as a PDF. (outfmt must be set to pdf). The parameters listed below are ignored when doing document to PDF conversions.
-        width (int, optional): The desired width of the output. Defaults to 0 (no resizing).
-        height (int, optional): The desired height of the output. Defaults to 0 (no resizing).
-        x1, y1, x2, y2 (int, optional): The crop region of the input. The raster is scaled after the crop is applied. The x1 and y1 values can be negative, which adds padding to the top and left; the x2 amd y2 can be greater than the original raster size, which adds padding to the right and bottom. Defaults to all 0 (no cropping).
-        page (int, optional): The page number to convert (for multi-page documents). Defaults to 1.
-        bgcolor (str, optional): The background color to apply when padding it required or when alpha is false and the input document uses an alpha channel (e.g., 'FFFFFF' or '#FFFFFF'). Defaults to 000000 (black).
-        alpha (bool, optional): Whether to preserve the alpha channel (transparency) in the output. Defaults to true. Alpha is only preserved for output formats which support it, regardless of this setting.
-
-    Returns:
-        Any: The converted document or an error message.
-    """
     url = BASE_URL
     # Convert bgcolor from hex string (e.g., '#FFFFFF' or 'FFFFFF') to integer
     bg = 0
