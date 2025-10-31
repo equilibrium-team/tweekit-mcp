@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "tweekit": {
+      "type": "http",
+      "url": "https://mcp.tweekit.com/mcp",
+      "headers": {
+        "ApiKey": "${TWEEKIT_API_KEY}",
+        "ApiSecret": "${TWEEKIT_API_SECRET}"
+      }
+    }
+  }
+}

@@ -1,9 +1,26 @@
 [project]
 name = "maitrix-mcp"
-version = "0.2.1"
+version = "1.5.0"
 description = "Maitrix/TweekIT MCP server on Cloud Run"
 requires-python = ">=3.10"
 dependencies = [
-    "fastmcp>=2.11.0",
+    "fastmcp>=2.12.0",
     "httpx>=0.28.1",
+    "fastapi>=0.115.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+asyncio_mode = "strict"
+filterwarnings = [
+    "ignore::DeprecationWarning",
 ]

@@ -2,7 +2,7 @@
 
 *Ingest and Convert Just About Any Filetype Into AI Workflows*
 
-Current version: v0.2.1
+Current version: v1.5.0
 
 ## Overview
 
@@ -59,6 +59,8 @@ The entire process happens in seconds, and your workflow never sees an incompati
 - [Client Compatibility](#client-compatibility)
   - [Quickstart (Claude Desktop)](#quickstart-claude-desktop)
   - [Quickstart (ChatGPT MCP)](#quickstart-chatgpt-mcp)
+  - [Quickstart (Cursor IDE)](#quickstart-cursor-ide)
+  - [Quickstart (Continue IDE)](#quickstart-continue-ide)
 - [Rate Limits and Pricing](#rate-limits-and-pricing)
 - [Core Concepts](#core-concepts)
 - [MCP API Reference](#mcp-reference)
@@ -67,6 +69,7 @@ The entire process happens in seconds, and your workflow never sees an incompati
 - [Demo + Show Code](#demo--show-code)
 - [Error Handling and Troubleshooting](#error-handling-and-troubleshooting)
 - [Advanced Topics](#advanced-topics)
+- [Registry Readiness](#registry-readiness)
 - [Resources](#resources)
 
 ## Requirements
@@ -180,7 +183,7 @@ All tools and resources are available here, used for testing and free trials:
 
 - Public MCP endpoint (HTTP transport): [https://mcp.tweekit.io/mcp/](https://mcp.tweekit.io/mcp/)
 
-The currently available resource name is 'version'. The currently available tool names are 'doctype' and 'convert'. See below for parameters, or query the MCP server as it will return metadata instructing use of each of these.
+The currently available resource name is 'version'. The currently available tool names are 'doctype', 'convert', and 'convert_url'. See below for parameters, or query the MCP server as it will return metadata instructing use of each of these.
 
 ### MCP Installation
 
@@ -212,6 +215,36 @@ By default, `server.py` will bind to `localhost` on port 8080. You can override 
 ```bash
 PORT=9090 uv run server.py
 ```
+
+### Cloud Run Deployments
+
+Use the provided script to build and deploy containerized stage or production services on Google Cloud Run.
+
+Prerequisites:
+- Google Cloud project access (`tweekitmcp-a26b6` by default).
+- `gcloud` CLI authenticated (`gcloud auth login`) and, if your standard config directory is read-only, a writable export such as `export CLOUDSDK_CONFIG="$(pwd)/.gcloud-config"`.
+
+Run the container locally with Docker (builds image `tweekit-mcp-local:dev` and binds to `8080`):
+
+```bash
+bash scripts/deploy_cloud_run.sh local --version dev
+```
+
+Deploy to staging (creates/updates the `tweekit-mcp-stage` service):
+
+```bash
+bash scripts/deploy_cloud_run.sh stage --version 1.5.0
+```
+
+Deploy to production (updates the `tweekit-mcp` service):
+
+```bash
+bash scripts/deploy_cloud_run.sh prod --version 1.5.0
+```
+
+Pass `--project <PROJECT_ID>` if you need to override the active `gcloud` configuration, and `--env-file <path>` to supply Cloud Run environment variables in YAML format.
+
+> The helper scripts never bundle credentials. Always provide your own Google Cloud project, region, and secret sources when running them; Equilibrium’s staging/prod keys live in managed secret stores and are intentionally excluded from this repository.
 
 ## Client Compatibility
 
@@ -260,7 +293,10 @@ Examples
   const client = new Client({ name: "tweekit-example", version: "1.0.0" }, { capabilities: {} }, transport);
   await client.connect();
   const tools = await client.listTools();
-  const res = await client.callTool({ name: "search", arguments: { query: "tweekit", max_results: 3 } });
+  const res = await client.callTool({
+    name: "doctype",
+    arguments: { ext: "pdf", apiKey: process.env.TWEEKIT_API_KEY, apiSecret: process.env.TWEEKIT_API_SECRET },
+  });
   console.log(res);
   ```
 
@@ -268,12 +304,23 @@ Examples
 
   ```py
   import asyncio
+  import os
+
   from fastmcp import Client
 
   async def main():
       async with Client("https://mcp.tweekit.io/mcp/") as c:
           print(await c.list_tools())
-          out = await c.call_tool("fetch", {"url": "https://tweekit.io"})
+          out = await c.call_tool(
+              "convert",
+              {
+                  "apiKey": os.environ["TWEEKIT_API_KEY"],
+                  "apiSecret": os.environ["TWEEKIT_API_SECRET"],
+                  "inext": "png",
+                  "outfmt": "txt",
+                  "blob": "<base64>",
+              },
+          )
           print(out)
   asyncio.run(main())
   ```
@@ -311,17 +358,74 @@ If your ChatGPT environment supports MCP tools, add an HTTP MCP server pointing 
 1) Configure server: URL `https://mcp.tweekit.io/mcp/` (HTTP transport)
 2) Use tools in a chat:
 
-- search
+- doctype
 
 ```json
-{ "name": "search", "arguments": { "query": "tweekit", "max_results": 3 } }
+{ "name": "doctype", "arguments": { "ext": "pdf", "apiKey": "…", "apiSecret": "…" } }
 ```
 
-- fetch
+- convert
 
 ```json
-{ "name": "fetch", "arguments": { "url": "https://tweekit.io" } }
+{
+  "name": "convert",
+  "arguments": {
+    "apiKey": "…",
+    "apiSecret": "…",
+    "inext": "png",
+    "outfmt": "txt",
+    "blob": "<base64>"
+  }
+}
 ```
+
+### Quickstart (Cursor IDE)
+
+Cursor loads MCP configuration from `~/.cursor/mcp.json`. To enable the hosted TweekIT server, merge the snippet below (also published at `configs/cursor-mcp.json`) into your existing file:
+
+```json
+{
+  "mcpServers": {
+    "tweekit": {
+      "type": "http",
+      "url": "https://mcp.tweekit.com/mcp",
+      "headers": {
+        "ApiKey": "${TWEEKIT_API_KEY}",
+        "ApiSecret": "${TWEEKIT_API_SECRET}"
+      }
+    }
+  }
+}
+```
+
+1. Export `TWEEKIT_API_KEY` and `TWEEKIT_API_SECRET` in your shell (or replace the placeholders with literal values).
+2. Restart Cursor and run “List tools” to confirm `version`, `doctype`, `convert`, and `convert_url` are available.
+3. Optional: host the JSON internally and surface an “Add to Cursor” deep-link for teammates.
+
+### Quickstart (Continue IDE)
+
+Continue (VS Code / JetBrains) stores MCP servers in `~/.continue/config.json`. Add the TweekIT server under `mcpServers` (ready-to-copy JSON at `configs/continue-mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "tweekit": {
+      "type": "streamable-http",
+      "url": "https://mcp.tweekit.com/mcp",
+      "headers": {
+        "ApiKey": "${TWEEKIT_API_KEY}",
+        "ApiSecret": "${TWEEKIT_API_SECRET}"
+      }
+    }
+  }
+}
+```
+
+After saving the configuration:
+
+1. Reload Continue so it picks up the new MCP entry.
+2. Use the Continue “Tools” panel to call `doctype`, `convert`, or `convert_url` with the appropriate parameters.
+3. Document workspace-specific credential steps so teammates can connect quickly.
 
 ## Rate Limits and Pricing
 
@@ -387,7 +491,7 @@ Fetches the current version of the TweekIT API. Takes no parameters.
 #### /server-version
 
 Description:
-Returns this MCP server's version string (e.g., `0.2.1`). Takes no parameters.
+Returns this MCP server's version string (e.g., `1.5.0`). Takes no parameters.
 
 ### Tools
 
@@ -422,6 +526,23 @@ Optional:
 - bgColor: Background color padding or when transparent documents need to have their alpha channel removed. (default: "000000" or black). Is is okay to precede the hex value with a '#' (web color indicator)
 
 The image of the specified page (or page 1) will be returned in the response with the correct content type set. If noRasterize is set to true and all other conditions are met, a PDF of the contents of the entire submitted document will be returned.
+
+#### /convert_url
+
+Description: Downloads a remote document over HTTP(S) and routes it through the TweekIT conversion pipeline without requiring the caller to supply base64 input.
+
+Parameters:
+- apiKey: API key for authentication.
+- apiSecret: API secret for authentication.
+- url: HTTPS or HTTP URL pointing to the source document.
+- outfmt: Desired output format (e.g., jpg, pdf, png).
+
+Optional:
+- inext: Override for the input extension. When omitted, the server deduces it from the URL path or the response content-type header.
+- noRasterize, width, height, x1, y1, x2, y2, page, alpha, bgColor: Same semantics as `/convert`.
+- fetchHeaders: Object of HTTP headers (e.g., Authorization) to include when downloading the remote asset.
+
+Returns: Same as `/convert`—binary image/file payloads surface as FastMCP `Image`/`File` objects; JSON responses are passed through.
 
 #### /search
 
@@ -760,6 +881,17 @@ In MCP, chain TweekIT transformations before invoking the AI model action.
 - **Reverse Proxy Secrets**: Use a server-side proxy to inject credentials, keeping them out of the browser.
 - **CORS and Domain Restrictions**: Configure your account to only accept widget calls from trusted domains.
 - **Short DocId Lifespans**: Rely on the default 20-minute expiry to limit exposure of uploaded files. (only applies to Rest API’s - For MCP files are only used during lifetime of processing and then purged)
+
+## Registry Readiness
+
+Preparing for MCP registries (Pulse, OpenAI, Anthropic, etc.)? Track the public requirements in [`docs/mcp-pulse-checklist.md`](docs/mcp-pulse-checklist.md). The checklist covers:
+
+- Required artifacts (live endpoints, plugin proxy, Claude bundle, docs, changelog)
+- Automated test expectations (`pytest`, optional staging sweeps)
+- Operational policies (secrets, monitoring, rollback, SLA)
+- Submission packet assets (screenshots, logs, support contact, license references)
+
+Keep the outstanding tasks section current before every submission.
 
 ## Resources
 
