@@ -11,7 +11,8 @@ from urllib.parse import quote_plus, urlparse
 import httpx
 from fastmcp import FastMCP
 from fastmcp.utilities.types import File, Image
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Annotated
+from pydantic import Field
 
 BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
 #BASE_URL = "http://localhost:16377/api/image/"
@@ -104,7 +105,11 @@ async def mcp_version() -> str:
     return SERVER_VERSION
 
 @mcp.tool()
-async def doctype(apiKey: str, apiSecret: str, extension: str = "*") -> Dict[str, Any]:
+async def doctype(
+    apiKey: Annotated[str, Field(description="TweekIT API key passed via the ApiKey header.")],
+    apiSecret: Annotated[str, Field(description="TweekIT API secret paired with the apiKey.")],
+    extension: Annotated[str, Field(description="File extension to inspect; use '*' to list all supported inputs.")] = "*",
+) -> Dict[str, Any]:
     """
     Retrieve a list of supported file formats or map a file extension to its document type.
 
@@ -270,22 +275,48 @@ async def _convert_impl(
 
 @mcp.tool()
 async def convert(
-    apiKey: str,
-    apiSecret: str,
-    inext: str,
-    outfmt: str,
-    blob: str,
-    noRasterize: bool = False,
-    width: int = 0,
-    height: int = 0,
-    x1: int = 0,
-    y1: int = 0,
-    x2: int = 0,
-    y2: int = 0,
-    page: int = 1,
-    alpha: bool = True,
-    bgColor: str = "",
+    apiKey: Annotated[str, Field(description="TweekIT API key passed via the ApiKey header.")],
+    apiSecret: Annotated[str, Field(description="TweekIT API secret paired with the apiKey.")],
+    inext: Annotated[str, Field(description="Input file extension (e.g., pdf, docx, png).")],
+    outfmt: Annotated[str, Field(description="Requested output format to send as Fmt.")],
+    blob: Annotated[str, Field(description="Base64 encoded document payload (DocData).")],
+    noRasterize: Annotated[bool, Field(description="Forward to TweekIT to disable rasterization when supported.")] = False,
+    width: Annotated[int, Field(description="Optional pixel width for the converted output.")] = 0,
+    height: Annotated[int, Field(description="Optional pixel height for the converted output.")] = 0,
+    x1: Annotated[int, Field(description="Left crop coordinate in source pixels.")] = 0,
+    y1: Annotated[int, Field(description="Top crop coordinate in source pixels.")] = 0,
+    x2: Annotated[int, Field(description="Right crop coordinate in source pixels.")] = 0,
+    y2: Annotated[int, Field(description="Bottom crop coordinate in source pixels.")] = 0,
+    page: Annotated[int, Field(description="Page number to convert for multi-page inputs.")] = 1,
+    alpha: Annotated[bool, Field(description="Preserve alpha transparency when producing raster formats.")] = True,
+    bgColor: Annotated[str, Field(description="Background color (hex RGB) to composite behind transparent pixels.")] = "",
 ) -> Any:
+    """Convert an uploaded document payload with TweekIT.
+
+    The file must already be base64 encoded (see `blob`). The conversion can be
+    resized and cropped by providing optional geometry parameters. For raster
+    outputs, set `alpha`/`bgColor` to control transparency handling.
+
+    Args:
+        apiKey: TweekIT API key (`ApiKey` header).
+        apiSecret: TweekIT API secret (`ApiSecret` header).
+        inext: Source file extension such as `pdf`, `docx`, or `png`.
+        outfmt: Desired output format (`Fmt` in the API body).
+        blob: Base64 encoded document payload (`DocData`).
+        noRasterize: Forwarded to TweekIT to skip rasterization when possible.
+        width: Optional pixel width to request in the output.
+        height: Optional pixel height to request in the output.
+        x1: Left crop coordinate in source pixels.
+        y1: Top crop coordinate in source pixels.
+        x2: Right crop coordinate in source pixels.
+        y2: Bottom crop coordinate in source pixels.
+        page: Page number to extract for multipage inputs.
+        alpha: Whether the output should preserve alpha transparency.
+        bgColor: Background color to composite behind transparent pixels.
+
+    Returns:
+        A FastMCP `Image` or `File` payload, or an error description.
+    """
     return await _convert_impl(
         apiKey=apiKey,
         apiSecret=apiSecret,
@@ -378,23 +409,51 @@ async def _convert_url_impl(
 
 @mcp.tool()
 async def convert_url(
-    apiKey: str,
-    apiSecret: str,
-    url: str,
-    outfmt: str,
-    inext: Optional[str] = None,
-    noRasterize: bool = False,
-    width: int = 0,
-    height: int = 0,
-    x1: int = 0,
-    y1: int = 0,
-    x2: int = 0,
-    y2: int = 0,
-    page: int = 1,
-    alpha: bool = True,
-    bgColor: str = "",
-    fetchHeaders: Optional[Dict[str, str]] = None,
+    apiKey: Annotated[str, Field(description="TweekIT API key passed via the ApiKey header.")],
+    apiSecret: Annotated[str, Field(description="TweekIT API secret paired with the apiKey.")],
+    url: Annotated[str, Field(description="Direct download URL for the source document or image.")],
+    outfmt: Annotated[str, Field(description="Requested output format to send as Fmt.")],
+    inext: Annotated[Optional[str], Field(description="Override for the detected input extension (e.g., pdf).")] = None,
+    noRasterize: Annotated[bool, Field(description="Forward to TweekIT to disable rasterization when supported.")] = False,
+    width: Annotated[int, Field(description="Optional pixel width for the converted output.")] = 0,
+    height: Annotated[int, Field(description="Optional pixel height for the converted output.")] = 0,
+    x1: Annotated[int, Field(description="Left crop coordinate in source pixels.")] = 0,
+    y1: Annotated[int, Field(description="Top crop coordinate in source pixels.")] = 0,
+    x2: Annotated[int, Field(description="Right crop coordinate in source pixels.")] = 0,
+    y2: Annotated[int, Field(description="Bottom crop coordinate in source pixels.")] = 0,
+    page: Annotated[int, Field(description="Page number to convert for multi-page inputs.")] = 1,
+    alpha: Annotated[bool, Field(description="Preserve alpha transparency when producing raster formats.")] = True,
+    bgColor: Annotated[str, Field(description="Background color (hex RGB) to composite behind transparent pixels.")] = "",
+    fetchHeaders: Annotated[Optional[Dict[str, str]], Field(description="Optional HTTP headers to include when downloading the URL.")] = None,
 ) -> Any:
+    """Download a remote file and convert it with TweekIT in one step.
+
+    This helper first fetches `url`, infers the input extension when possible,
+    and then forwards the bytes to `convert`. Supply `fetchHeaders` when the
+    remote resource needs authentication or custom headers.
+
+    Args:
+        apiKey: TweekIT API key (`ApiKey` header).
+        apiSecret: TweekIT API secret (`ApiSecret` header).
+        url: Direct download URL for the source document or image.
+        outfmt: Desired output format (`Fmt`).
+        inext: Optional override for the source extension if it cannot be
+            detected from the URL or response headers.
+        noRasterize: Forwarded to TweekIT to skip rasterization when possible.
+        width: Optional pixel width to request in the output.
+        height: Optional pixel height to request in the output.
+        x1: Left crop coordinate in source pixels.
+        y1: Top crop coordinate in source pixels.
+        x2: Right crop coordinate in source pixels.
+        y2: Bottom crop coordinate in source pixels.
+        page: Page number to extract for multipage inputs.
+        alpha: Whether the output should preserve alpha transparency.
+        bgColor: Background color to composite behind transparent pixels.
+        fetchHeaders: Optional mapping of HTTP headers to include when fetching.
+
+    Returns:
+        A FastMCP `Image` or `File` payload, or an error description.
+    """
     return await _convert_url_impl(
         apiKey=apiKey,
         apiSecret=apiSecret,
@@ -416,7 +475,9 @@ async def convert_url(
 
 
 @mcp.tool()
-async def fetch(url: str) -> Any:
+async def fetch(
+    url: Annotated[str, Field(description="HTTP or HTTPS URL to retrieve and normalize.")],
+) -> Any:
     """Fetch a URL and return content.
 
     - Images return as FastMCP Image.
@@ -459,7 +520,10 @@ async def fetch(url: str) -> Any:
 
 
 @mcp.tool()
-async def search(query: str, max_results: int = 5) -> Dict[str, Any]:
+async def search(
+    query: Annotated[str, Field(description="Search keywords to send to DuckDuckGo.")],
+    max_results: Annotated[int, Field(description="Maximum number of results to return (1-10).")]=5,
+) -> Dict[str, Any]:
     """Simple web search using DuckDuckGo HTML endpoint.
 
     Returns a list of {title, url, snippet} objects. Best‑effort parsing.
