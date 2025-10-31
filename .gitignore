@@ -205,3 +205,19 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Test artifacts (keep directories but ignore contents)
+tests/assets/*
+!tests/assets/.gitkeep
+tests/output/*
+!tests/output/.gitkeep
+
+# Local credentials
+.tweekit_credentials
+.tweekit_output_dirs
+
+# Local gcloud/Firebase config and host OS cruft
+.gcloud-config/
+.DS_Store
+tests/.DS_Store
+functions/packages/

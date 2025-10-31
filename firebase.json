@@ -1,0 +1,27 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "venv",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "runtime": "python311",
+      "predeploy": [
+        "echo 'Dependencies are pre-installed'"
+      ]
+    }
+  ],
+  "hosting": {
+    "rewrites": [
+      {
+        "source": "/mcp/**",
+        "function": "mcp_server"
+      }
+    ]
+  }
+}
