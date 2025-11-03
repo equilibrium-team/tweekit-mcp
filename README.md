@@ -245,6 +245,8 @@ bash scripts/deploy_cloud_run.sh prod --version 1.5.0
 Pass `--project <PROJECT_ID>` if you need to override the active `gcloud` configuration, and `--env-file <path>` to supply Cloud Run environment variables in YAML format.
 
 > The helper scripts never bundle credentials. Always provide your own Google Cloud project, region, and secret sources when running them; Equilibrium’s staging/prod keys live in managed secret stores and are intentionally excluded from this repository.
+>
+> Python dependencies for Firebase Functions are resolved at deploy time. `scripts/deploy_firebase.sh` will vendor them into `functions/packages/` locally (a gitignored directory) so the repo stays lightweight.
 
 ## Client Compatibility
 
