@@ -20,7 +20,7 @@
     },
     "tweekit-production": {
       "type": "streamable-http",
-      "url": "https://mcp.tweekit.com/mcp",
+      "url": "https://mcp.tweekit.io/mcp",
       "note": "Production MCP endpoint; requires valid API credentials.",
       "headers": {
         "ApiKey": "<YOUR_TWEEKIT_API_KEY>",

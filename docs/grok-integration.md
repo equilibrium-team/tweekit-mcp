@@ -11,7 +11,7 @@ This document captures the current path to enable TweekIT MCP inside xAI’s Gro
 1. Install the MCP SuperAssistant browser extension (Chrome/Edge) from the web store.
 2. Open the extension options and add a server entry:
    - **Name:** TweekIT Converter
-   - **URL:** `https://mcp.tweekit.com/mcp` (update as needed)
+   - **URL:** `https://mcp.tweekit.io/mcp` (update as needed)
    - **Transport:** `streamable-http`
    - Provide `TWEEKIT_API_KEY`/`SECRET` in the extension’s credential fields.
 3. Enable Grok (plus any other supported chat UIs) inside the extension.

@@ -3,7 +3,7 @@
 This guide explains how to package and distribute the TweekIT MCP server for Anthropic Claude Desktop using the `.mcpb` bundle format.
 
 ## Overview
-- The bundle references the hosted streamable HTTP endpoint (`https://mcp.tweekit.com/mcp` by default).
+- The bundle references the hosted streamable HTTP endpoint (`https://mcp.tweekit.io/mcp` by default).
 - Users supply their TweekIT credentials through Claude's environment settings when importing the bundle.
 - The build script emits `dist/tweekit-claude.mcpb`, which Claude Desktop can install with one click.
 
@@ -21,7 +21,7 @@ Edit `claude/manifest.json` to ensure:
 ## Build the Bundle
 ```bash
 python scripts/build_claude_bundle.py \
-  --server-url https://mcp.tweekit.com/mcp \
+  --server-url https://mcp.tweekit.io/mcp \
   --version 0.1.0 \
   --output dist/tweekit-claude.mcpb
 ```

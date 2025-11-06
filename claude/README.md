@@ -7,7 +7,7 @@ This bundle configures Claude Desktop to connect to the hosted TweekIT MCP serve
 - `README.md` – quick reference for operators.
 
 ## Customization Checklist
-1. Replace `entry_point.url` with the production MCP endpoint (defaults to `https://mcp.tweekit.com/mcp`).
+1. Replace `entry_point.url` with the production MCP endpoint (defaults to `https://mcp.tweekit.io/mcp`).
 2. Confirm the required environment variables match your authentication model.
 3. Bump the `version` and update the changelog when shipping edits.
 
