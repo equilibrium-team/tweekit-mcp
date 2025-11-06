@@ -1,0 +1,35 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.equilibrium-team/tweekit",
+  "title": "TweekIT MCP Server",
+  "description": "Normalize and convert more than 400 file types via TweekIT's hosted MCP streamable HTTP endpoint.",
+  "version": "1.5.0",
+  "websiteUrl": "https://www.tweekit.io/",
+  "repository": {
+    "source": "github",
+    "id": "1032125130",
+    "url": "https://github.com/equilibrium-team/tweekit-mcp"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.tweekit.io/mcp",
+      "headers": [
+        {
+          "name": "ApiKey",
+          "description": "TweekIT API key issued from the TweekIT account portal.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "ApiSecret",
+          "description": "API secret paired with the ApiKey for authenticated conversions.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

@@ -11,7 +11,7 @@ DeepSeek does not yet provide a first-class MCP connector, but teams can still i
 python scripts/deepseek_mcp_bridge.py \
   --file path/to/input.pdf \
   --outfmt txt \
-  --server https://mcp.tweekit.com/mcp \
+  --server https://mcp.tweekit.io/mcp \
   --api-key "$TWEEKIT_API_KEY" \
   --api-secret "$TWEEKIT_API_SECRET" \
   --output converted.txt
@@ -25,7 +25,7 @@ The script invokes the MCP `convert` tool via `fastmcp.Client`, writing any base
 - **Credential handling:** Provide `TWEEKIT_API_KEY`/`TWEEKIT_API_SECRET` via environment variables or parameter flags; rotate keys through your secrets manager.
 
 ## Future Native Integration
-- Monitor DeepSeek announcements for MCP or plugin support. Once official hooks exist, reuse the same configuration (`https://mcp.tweekit.com/mcp`) and tool names (`version`, `doctype`, `convert`).
+- Monitor DeepSeek announcements for MCP or plugin support. Once official hooks exist, reuse the same configuration (`https://mcp.tweekit.io/mcp`) and tool names (`version`, `doctype`, `convert`).
 - Prepare a DeepSeek-specific manifest mirroring the ChatGPT plugin proxy if their platform adopts an OpenAPI-based registration system.
 - Add automated tests that validate TweekIT responses through DeepSeek’s tooling as soon as beta access becomes available.
 
