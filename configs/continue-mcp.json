@@ -2,7 +2,7 @@
   "mcpServers": {
     "tweekit": {
       "type": "streamable-http",
-      "url": "https://mcp.tweekit.com/mcp",
+      "url": "https://mcp.tweekit.io/mcp",
       "headers": {
         "ApiKey": "${TWEEKIT_API_KEY}",
         "ApiSecret": "${TWEEKIT_API_SECRET}"

@@ -1,6 +1,6 @@
 # Developer Tool Integrations
 
-This guide summarizes how to connect the hosted TweekIT MCP server to popular IDE assistants and automation environments. Update the URLs if you run your own deployment (defaults assume `https://mcp.tweekit.com/mcp`).
+This guide summarizes how to connect the hosted TweekIT MCP server to popular IDE assistants and automation environments. Update the URLs if you run your own deployment (defaults assume `https://mcp.tweekit.io/mcp`).
 
 ## Cursor
 Cursor reads configuration from `~/.cursor/mcp.json`. Merge the snippet below (also available at `configs/cursor-mcp.json`) into that file or publish it through an “Add to Cursor” link on your docs site.
@@ -10,7 +10,7 @@ Cursor reads configuration from `~/.cursor/mcp.json`. Merge the snippet below (a
   "mcpServers": {
     "tweekit": {
       "type": "http",
-      "url": "https://mcp.tweekit.com/mcp",
+      "url": "https://mcp.tweekit.io/mcp",
       "headers": {
         "ApiKey": "${TWEEKIT_API_KEY}",
         "ApiSecret": "${TWEEKIT_API_SECRET}"
@@ -33,7 +33,7 @@ Continue stores MCP servers in `~/.continue/config.json`. Add the following entr
   "mcpServers": {
     "tweekit": {
       "type": "streamable-http",
-      "url": "https://mcp.tweekit.com/mcp",
+      "url": "https://mcp.tweekit.io/mcp",
       "headers": {
         "ApiKey": "${TWEEKIT_API_KEY}",
         "ApiSecret": "${TWEEKIT_API_SECRET}"

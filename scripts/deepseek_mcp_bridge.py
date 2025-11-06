@@ -6,7 +6,7 @@ Example usage:
     python scripts/deepseek_mcp_bridge.py \
         --file sample.pdf \
         --outfmt txt \
-        --server https://mcp.tweekit.com/mcp
+        --server https://mcp.tweekit.io/mcp
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Call the TweekIT convert tool for DeepSeek workflows.")
     parser.add_argument("--file", required=True, type=Path, help="Path to the input document.")
     parser.add_argument("--outfmt", required=True, help="Target output format (e.g. pdf, txt, png).")
-    parser.add_argument("--server", default="https://mcp.tweekit.com/mcp", help="TweekIT MCP server URL.")
+    parser.add_argument("--server", default="https://mcp.tweekit.io/mcp", help="TweekIT MCP server URL.")
     parser.add_argument("--api-key", default=None, help="TweekIT API key (overrides env variable).")
     parser.add_argument("--api-secret", default=None, help="TweekIT API secret (overrides env variable).")
     parser.add_argument("--width", type=int, default=0, help="Resize width in pixels (optional).")

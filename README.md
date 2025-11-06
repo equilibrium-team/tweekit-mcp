@@ -388,7 +388,7 @@ Cursor loads MCP configuration from `~/.cursor/mcp.json`. To enable the hosted T
   "mcpServers": {
     "tweekit": {
       "type": "http",
-      "url": "https://mcp.tweekit.com/mcp",
+      "url": "https://mcp.tweekit.io/mcp",
       "headers": {
         "ApiKey": "${TWEEKIT_API_KEY}",
         "ApiSecret": "${TWEEKIT_API_SECRET}"
@@ -411,7 +411,7 @@ Continue (VS Code / JetBrains) stores MCP servers in `~/.continue/config.json`. 
   "mcpServers": {
     "tweekit": {
       "type": "streamable-http",
-      "url": "https://mcp.tweekit.com/mcp",
+      "url": "https://mcp.tweekit.io/mcp",
       "headers": {
         "ApiKey": "${TWEEKIT_API_KEY}",
         "ApiSecret": "${TWEEKIT_API_SECRET}"

@@ -13,7 +13,7 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://mcp.tweekit.com/mcp",
+      "url": "https://mcp.tweekit.io/mcp",
       "headers": [
         {
           "name": "ApiKey",

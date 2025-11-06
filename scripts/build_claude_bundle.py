@@ -4,7 +4,7 @@ Build a Claude Desktop MCP bundle (.mcpb) for the TweekIT server.
 
 Usage:
     python scripts/build_claude_bundle.py \
-        --server-url https://mcp.tweekit.com/mcp \
+        --server-url https://mcp.tweekit.io/mcp \
         --version 0.1.0 \
         --output dist/tweekit-claude.mcpb
 """
