@@ -398,7 +398,7 @@ Cursor loads MCP configuration from `~/.cursor/mcp.json`. To enable the hosted T
 }
 ```
 
-1. Export `TWEEKIT_API_KEY` and `TWEEKIT_API_SECRET` in your shell (or replace the placeholders with literal values).
+- Copy `.env.example` to `.env`, fill in `TWEEKIT_API_KEY` / `TWEEKIT_API_SECRET`, then `source .env` (or export the variables manually).
 2. Restart Cursor and run “List tools” to confirm `version`, `doctype`, `convert`, and `convert_url` are available.
 3. Optional: host the JSON internally and surface an “Add to Cursor” deep-link for teammates.
 
