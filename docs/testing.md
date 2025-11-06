@@ -69,7 +69,7 @@ Replace the placeholder URLs with your own staging project IDs. We intentionally
 
 ```bash
 uv run python scripts/run_mcp_e2e.py \
-  --server-url https://mcp.tweekit.com/mcp/ \
+  --server-url https://mcp.tweekit.io/mcp/ \
   --credentials-file .tweekit_prod_credentials \
   --include-convert-url \
   --output-dir tests/output/prod
@@ -81,7 +81,7 @@ Add `--save-credentials` the first time you run each command to persist the prom
 Useful when pointed at staging/production endpoints. It calls each tool, validates binary responses, and reports missing checks.
 
 ```bash
-uv run python test_server.py --base-url https://mcp.tweekit.com/mcp/
+uv run python test_server.py --base-url https://mcp.tweekit.io/mcp/
 ```
 
 ### 1.4 Coverage Gaps & TODOs
@@ -109,7 +109,7 @@ Run these steps for release candidates, major refactors, or whenever UI/manifest
 
 ### 2.3 ChatGPT MCP (Custom GPT / Tools panel)
 1. Configure an MCP server with URL + headers:
-   - URL: `https://mcp.tweekit.com/mcp/` (or staging).
+   - URL: `https://mcp.tweekit.io/mcp/` (or staging).
    - Headers: `ApiKey`, `ApiSecret`.
 2. In a chat, run:
    - `doctype` for `pdf`.
