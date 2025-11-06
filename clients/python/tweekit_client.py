@@ -34,7 +34,7 @@ class TweekitClient:
         api_key: str | None = None,
         api_secret: str | None = None,
     ) -> None:
-        self.server_url = server_url or os.getenv("TWEEKIT_MCP_SERVER", "https://mcp.tweekit.com/mcp")
+        self.server_url = server_url or os.getenv("TWEEKIT_MCP_SERVER", "https://mcp.tweekit.io/mcp")
         self.api_key = api_key or os.getenv("TWEEKIT_API_KEY")
         self.api_secret = api_secret or os.getenv("TWEEKIT_API_SECRET")
         self._client: Client | None = None

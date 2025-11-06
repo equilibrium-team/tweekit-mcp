@@ -14,7 +14,7 @@ import { argv } from "node:process";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
-const DEFAULT_SERVER = process.env.TWEEKIT_MCP_SERVER ?? "https://mcp.tweekit.com/mcp";
+const DEFAULT_SERVER = process.env.TWEEKIT_MCP_SERVER ?? "https://mcp.tweekit.io/mcp";
 const API_KEY = process.env.TWEEKIT_API_KEY;
 const API_SECRET = process.env.TWEEKIT_API_SECRET;
 

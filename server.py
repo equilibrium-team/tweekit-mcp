@@ -93,10 +93,22 @@ def _extract_error_details(response: Optional[httpx.Response]) -> str:
 async def version() -> str:
     """Get current version of the TweekIT API."""
     url = f"{BASE_URL}version"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(url)
-        response.raise_for_status()
-        return response.text
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            body = (response.text or "").strip()
+            return body or "unknown"
+    except httpx.HTTPStatusError as e:
+        logger.warning("TweekIT version probe failed: status=%s", getattr(e.response, "status_code", "unknown"))
+        details = _extract_error_details(e.response)
+        return f"unavailable (http {getattr(e.response, 'status_code', 'unknown')}{': ' + details if details else ''})"
+    except httpx.RequestError as e:
+        logger.error("Network error checking TweekIT version: %s", e)
+        return f"unavailable (network error: {e})"
+    except Exception as e:
+        logger.exception("Unexpected error checking TweekIT version")
+        return f"unavailable (unexpected error: {e})"
 
 
 @mcp.resource("config://tweekit-mcp-version")
