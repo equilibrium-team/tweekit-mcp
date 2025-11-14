@@ -65,17 +65,20 @@ This roadmap breaks down the remaining work to package the TweekIT MCP server fo
 - **Deliverables**
   - Python + Node.js examples demonstrating connection + `convert` usage.
   - Optional lightweight `tweekit-mcp-client` wrappers (PyPI/NPM).
+  - Planned TypeScript Cloud Run/serverless package (`tweekit-mcp`) delivering the proxy as a container-ready runtime.
   - Documentation updates linking to quickstarts and SDKs.
 - **Next Actions**
   1. Use official MCP SDKs to craft runnable scripts (include env var setup + sample file).
   2. Publish packages (if built) with semantic versioning and CI release pipeline.
-  3. Update README + AGENTS guide with quickstart links; add Postman/HTTP examples for OpenAPI spec.
+  3. Start TypeScript implementation targeting Cloud Run (baseline container deploy), with a follow-on serverless template once stable.
+  4. Update README + AGENTS guide with quickstart links; add Postman/HTTP examples for OpenAPI spec.
 - **Open Questions**
   - Do we bundle sample assets for conversion demos? Need decision on licensing/sample content.
 
 ## Cross-Cutting Requirements
 - Ensure MCP server remains API-compliant: document versioning strategy, test suite updates, and backward-compat checks.
 - Establish staging environment for manifests/bundles before public release.
+- Keep hosted environments on Google Cloud Run (containerized) with downstream processing in ISO/SaaS 70 compliant data centers; document purge guarantees for tier-1 TweekIT miners.
 - Add CI checks for manifest schema validation, bundle integrity, SDK linting, and `pytest` automation (proxy, configs, helpers).
 - Track MCP Pulse submission prerequisites via `docs/mcp-pulse-checklist.md`: automated test evidence, connector documentation, and distribution artifacts.
 

@@ -13,7 +13,7 @@ This document explains how to run the FastAPI proxy, publish the ChatGPT plugin 
 | `TWEEKIT_API_BASE_URL` | Override upstream TweekIT API root (optional). | `https://dapp.tweekit.io/tweekit/api/image/` |
 | `TWEEKIT_API_KEY` | Default API key for proxy requests. | `abc123` |
 | `TWEEKIT_API_SECRET` | Default API secret for proxy requests. | `def456` |
-| `PLUGIN_PUBLIC_BASE_URL` | Public HTTPS origin hosting the proxy. | `https://plugin.tweekit.com` |
+| `PLUGIN_PUBLIC_BASE_URL` | Public HTTPS origin hosting the proxy. | `https://mcp.tweekit.io/mcp` |
 | `PLUGIN_LOGO_URL` | Absolute URL for plugin logo. | `https://tweekit.com/assets/logo.png` |
 
 > If you omit `TWEEKIT_API_KEY`/`SECRET`, each request must include either a `Bearer` token in `Authorization` or both `X-Api-Key` and `X-Api-Secret` headers.
@@ -31,20 +31,20 @@ Expose the service via HTTPS (e.g., `ngrok http 8000`) so ChatGPT can reach it.
 ## Verify Endpoints
 ```bash
 curl -H "Authorization: Bearer $TWEEKIT_API_KEY" \
-  "https://plugin.tweekit.com/version"
+  "https://mcp.tweekit.io/mcp/version"
 
 curl -H "Authorization: Bearer $TWEEKIT_API_KEY" \
-  "https://plugin.tweekit.com/doctype?ext=pdf"
+  "https://mcp.tweekit.io/mcp/doctype?ext=pdf"
 
 curl -X POST -H "Authorization: Bearer $TWEEKIT_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"inext": "png", "outfmt": "pdf", "blob": "<base64>"}' \
-  "https://plugin.tweekit.com/convert"
+  "https://mcp.tweekit.io/mcp/convert"
 ```
 
 ## ChatGPT Manual Installation
 1. Navigate to *Settings → GPTs → Create new GPT → Configure → Actions*.
-2. Choose *Import from URL* and provide `https://plugin.tweekit.com/.well-known/ai-plugin.json`.
+2. Choose *Import from URL* and provide `https://mcp.tweekit.io/mcp/.well-known/ai-plugin.json`.
 3. Assign the bearer token (TweekIT API key) when prompted for authentication.
 4. Test actions by requesting `List supported TweekIT doctype options`.
 
