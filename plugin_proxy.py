@@ -55,13 +55,24 @@ def _resolve_credentials(
     authorization: Optional[str] = None,
     body_key: Optional[str] = None,
     body_secret: Optional[str] = None,
-):
+    *,
+    allow_defaults: bool = True,
+    required: bool = True,
+) -> tuple[Optional[str], Optional[str]]:
     bearer = _extract_bearer(authorization)
-    api_key = header_key or body_key or DEFAULT_API_KEY
-    api_secret = header_secret or body_secret or DEFAULT_API_SECRET
+    api_key = header_key or body_key
+    api_secret = header_secret or body_secret
     if bearer:
         api_key = bearer
-    if not api_key or not api_secret:
+    if allow_defaults:
+        api_key = api_key or DEFAULT_API_KEY
+        api_secret = api_secret or DEFAULT_API_SECRET
+    else:
+        if api_key and not api_secret and DEFAULT_API_SECRET:
+            api_secret = DEFAULT_API_SECRET
+        if api_secret and not api_key and DEFAULT_API_KEY:
+            api_key = DEFAULT_API_KEY
+    if required and (not api_key or not api_secret):
         raise HTTPException(status_code=401, detail="Missing TweekIT API credentials.")
     return api_key, api_secret
 
@@ -72,10 +83,21 @@ async def get_version(
     api_secret: Optional[str] = Header(None, alias="X-Api-Secret"),
     authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
-    key, secret = _resolve_credentials(api_key, api_secret, authorization)
-    headers = {"ApiKey": key, "ApiSecret": secret}
-    response = await _call_tweekit("version", headers=headers)
-    return {"version": response.text}
+    key, secret = _resolve_credentials(
+        api_key,
+        api_secret,
+        authorization,
+        allow_defaults=True,
+        required=False,
+    )
+    if key and secret:
+        headers = {"ApiKey": key, "ApiSecret": secret}
+        response = await _call_tweekit("version", headers=headers)
+        return {"version": response.text}
+    return {
+        "version": None,
+        "detail": "Provide Authorization bearer token to fetch TweekIT upstream version.",
+    }
 
 
 @app.get("/doctype", summary="List supported document types or resolve an extension.")
@@ -85,7 +107,12 @@ async def get_doctype(
     api_secret: Optional[str] = Header(None, alias="X-Api-Secret"),
     authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
-    key, secret = _resolve_credentials(api_key, api_secret, authorization)
+    key, secret = _resolve_credentials(
+        api_key,
+        api_secret,
+        authorization,
+        allow_defaults=False,
+    )
     headers = {"ApiKey": key, "ApiSecret": secret}
     response = await _call_tweekit("doctype", headers=headers, params={"ext": ext})
     return response.json()
@@ -98,7 +125,14 @@ async def post_convert(
     api_secret: Optional[str] = Header(None, alias="X-Api-Secret"),
     authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
-    key, secret = _resolve_credentials(api_key, api_secret, authorization, payload.apiKey, payload.apiSecret)
+    key, secret = _resolve_credentials(
+        api_key,
+        api_secret,
+        authorization,
+        payload.apiKey,
+        payload.apiSecret,
+        allow_defaults=False,
+    )
     headers = {"ApiKey": key, "ApiSecret": secret}
     body = {
         "Fmt": payload.outfmt,

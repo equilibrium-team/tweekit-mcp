@@ -13,11 +13,13 @@ WORKDIR /app
 
 # Allow statements and log messages to immediately appear in the logs
 ENV PYTHONUNBUFFERED=1
+ENV PLUGIN_PROXY_PORT=8000
 
 # Install dependencies
 RUN uv sync
 
-EXPOSE $PORT
+EXPOSE 8080
+EXPOSE 8000
 
-# Run the FastMCP server
-CMD ["uv", "run", "server.py"]
+# Run the FastMCP server and plugin proxy (if ports do not conflict)
+CMD ["scripts/start_services.sh"]
