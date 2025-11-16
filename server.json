@@ -31,5 +31,19 @@
         }
       ]
     }
+  ],
+  "resources": [
+    {
+      "uri": "config://tweekit-version",
+      "name": "TweekIT upstream version",
+      "description": "Returns the current upstream TweekIT API version string.",
+      "mimeType": "text/plain"
+    },
+    {
+      "uri": "config://tweekit-mcp-version",
+      "name": "TweekIT MCP server version",
+      "description": "Returns the deployed MCP server version string.",
+      "mimeType": "text/plain"
+    }
   ]
 }

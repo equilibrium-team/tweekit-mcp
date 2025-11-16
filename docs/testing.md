@@ -84,7 +84,23 @@ Useful when pointed at staging/production endpoints. It calls each tool, validat
 uv run python test_server.py --base-url https://mcp.tweekit.io/mcp/
 ```
 
-### 1.4 Coverage Gaps & TODOs
+### 1.4 ChatGPT Proxy Smoke (`test_chatgpt_proxy_live.py`)
+Verifies the staged/production FastAPI proxy that powers ChatGPT Actions.
+
+```bash
+export CHATGPT_PROXY_BASE_URL=https://tweekit-mcp-stage-958133016924.us-west1.run.app
+export CHATGPT_PROXY_BEARER=$TWEEKIT_API_KEY  # defaults to TWEEKIT_API_KEY if set
+
+uv run python -m pytest tests/test_chatgpt_proxy_live.py
+```
+
+The test suite checks:
+- `/.well-known/ai-plugin.json` (manifest) and embedded OpenAPI schema.
+- `/version`, `/doctype`, and `/convert` REST endpoints with bearer auth.
+
+If either environment variable is missing, the tests skip automatically. Set them explicitly in CI to exercise stage/prod.
+
+### 1.5 Coverage Gaps & TODOs
 - Node.js quickstart lacks automated tests; add when MCP clients support offline mocking.
 - DeepSeek bridge script only has unit coverage; integrate it once staging secrets exist.
 - IDE configs are schema-checked but not exercised end-to-end; consider headless tests if platform tooling emerges.

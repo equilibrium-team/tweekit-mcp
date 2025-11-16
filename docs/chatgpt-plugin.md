@@ -29,24 +29,61 @@ uvicorn plugin_proxy:app --host 0.0.0.0 --port 8000 --reload
 Expose the service via HTTPS (e.g., `ngrok http 8000`) so ChatGPT can reach it.
 
 ## Verify Endpoints
+Set `PROXY_URL` to the Cloud Run URL (or ngrok tunnel) that is running `plugin_proxy.py`. Then verify the REST surface that ChatGPT will call:
+
 ```bash
-curl -H "Authorization: Bearer $TWEEKIT_API_KEY" \
-  "https://mcp.tweekit.io/mcp/version"
+PROXY_URL="https://tweekit-mcp-stage-958133016924.us-west1.run.app"
+
+curl "$PROXY_URL/.well-known/ai-plugin.json"
 
 curl -H "Authorization: Bearer $TWEEKIT_API_KEY" \
-  "https://mcp.tweekit.io/mcp/doctype?ext=pdf"
+  "$PROXY_URL/version"
+
+curl -H "Authorization: Bearer $TWEEKIT_API_KEY" \
+  "$PROXY_URL/doctype?ext=pdf"
 
 curl -X POST -H "Authorization: Bearer $TWEEKIT_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"inext": "png", "outfmt": "pdf", "blob": "<base64>"}' \
-  "https://mcp.tweekit.io/mcp/convert"
+  "$PROXY_URL/convert"
 ```
 
+All three endpoints must return HTTP 200 before publishing.
+
 ## ChatGPT Manual Installation
-1. Navigate to *Settings → GPTs → Create new GPT → Configure → Actions*.
-2. Choose *Import from URL* and provide `https://mcp.tweekit.io/mcp/.well-known/ai-plugin.json`.
-3. Assign the bearer token (TweekIT API key) when prompted for authentication.
-4. Test actions by requesting `List supported TweekIT doctype options`.
+1. Navigate to *Settings → GPTs → Create new GPT → Configure → Actions*. (You must toggle into “Allow unverified actions” first.)
+2. Choose *Import from URL* and provide `https://mcp.tweekit.io/mcp/.well-known/ai-plugin.json`. The ChatGPT UI fetches both the manifest and `openapi.json`.
+3. When prompted for authentication, paste your TweekIT API key as the bearer token (`Authorization: Bearer …`). The proxy forwards this key as `ApiKey`.
+4. Test actions from the configuration playground:
+   - `List supported TweekIT doctype options`
+   - `Convert a PNG to PDF` (upload a small sample file)
+   - Verify the action output includes links or binary attachments returned by the proxy.
+
+## Cloud Run Deployment Checklist
+
+### Stage
+1. Build/publish the container image (already handled by `scripts/deploy_cloud_run.sh` or Cloud Build).
+2. Deploy the proxy:
+   ```bash
+   bash scripts/deploy_cloud_run.sh stage \
+     --version 1.6.01 \
+     --project tweekitmcp-a26b6 \
+     --env-file stage.env \
+     --command uv \
+     --args run,uvicorn,plugin_proxy:app,--host,0.0.0.0,--port,8080
+   ```
+   `stage.env` must export `TWEEKIT_API_KEY`, `TWEEKIT_API_SECRET`, and `PLUGIN_PUBLIC_BASE_URL=https://mcp.tweekit.io/mcp`.
+3. Map the staging hostname (e.g., `staging.mcp.tweekit.io`) to the Cloud Run service or use the default `*.a.run.app` URL.
+4. Run the curl smoke tests above and capture screenshots from the ChatGPT configuration playground.
+
+### Production
+1. Deploy the same image with `--version <release-tag>` against the `tweekit-mcp` Cloud Run service (prod target in `deploy_cloud_run.sh`).
+2. Point `mcp.tweekit.io` at the prod service via a Cloud Run domain mapping (manage TLS and DNS records).
+3. Confirm:
+   - `https://mcp.tweekit.io/mcp/.well-known/ai-plugin.json`
+   - `https://mcp.tweekit.io/mcp/openapi.json`
+   - `GET /version`, `GET /doctype`, `POST /convert` (with bearer token)
+4. Document the deploy in the release notes and update the MCP Pulse packet with screenshots and logs.
 
 ## Submission Checklist
 - [ ] Manifest `/ .well-known/ai-plugin.json` reachable over HTTPS.
