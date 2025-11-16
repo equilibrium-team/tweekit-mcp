@@ -2,7 +2,7 @@
 
 *Ingest and Convert Just About Any Filetype Into AI Workflows*
 
-Current version: v1.5.0
+Current version: v1.6.01
 
 ## Overview
 
@@ -185,6 +185,20 @@ All tools and resources are available here, used for testing and free trials:
 
 The currently available resource name is 'version'. The currently available tool names are 'doctype', 'convert', and 'convert_url'. See below for parameters, or query the MCP server as it will return metadata instructing use of each of these.
 
+### Versioning & Build Numbers
+
+The project tracks semantic versions in `major.minor.build` format, with the build component padded to two digits (for example, `1.6.01`). Use `scripts/bump_version.py` to keep every metadata file aligned:
+
+```bash
+# Increment just the build number (e.g., 1.6.01 -> 1.6.02)
+python scripts/bump_version.py --bump-build
+
+# Set an explicit version, resetting the build counter as needed
+python scripts/bump_version.py --set 1.7.00
+```
+
+The script updates `VERSION`, `pyproject.toml`, `server.py`, `server.json`, `README.md`, and `uv.lock` so container builds, manifests, and docs stay synchronized.
+
 ### MCP Installation
 
 You can run the TweekIT MCP server locally or connect to a hosted instance. The local option is recommended for development and testing.
@@ -233,13 +247,13 @@ bash scripts/deploy_cloud_run.sh local --version dev
 Deploy to staging (creates/updates the `tweekit-mcp-stage` service):
 
 ```bash
-bash scripts/deploy_cloud_run.sh stage --version 1.5.0
+bash scripts/deploy_cloud_run.sh stage --version 1.6.01
 ```
 
 Deploy to production (updates the `tweekit-mcp` service):
 
 ```bash
-bash scripts/deploy_cloud_run.sh prod --version 1.5.0
+bash scripts/deploy_cloud_run.sh prod --version 1.6.01
 ```
 
 Pass `--project <PROJECT_ID>` if you need to override the active `gcloud` configuration, and `--env-file <path>` to supply Cloud Run environment variables in YAML format.
@@ -493,7 +507,7 @@ Fetches the current version of the TweekIT API. Takes no parameters.
 #### /server-version
 
 Description:
-Returns this MCP server's version string (e.g., `1.5.0`). Takes no parameters.
+Returns this MCP server's version string (e.g., `1.6.01`). Takes no parameters.
 
 ### Tools
 
