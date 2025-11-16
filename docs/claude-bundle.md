@@ -4,7 +4,7 @@ This guide explains how to package and distribute the TweekIT MCP server for Ant
 
 ## Overview
 - The bundle references the hosted streamable HTTP endpoint (`https://mcp.tweekit.io/mcp` by default).
-- Users supply their TweekIT credentials through Claude's environment settings when importing the bundle.
+- Users supply their TweekIT credentials through Claude's environment settings when importing the bundle; the manifest forwards them as `ApiKey`/`ApiSecret` HTTP headers.
 - The build script emits `dist/tweekit-claude.mcpb`, which Claude Desktop can install with one click.
 
 ## Prerequisites
@@ -38,7 +38,7 @@ cat dist/manifest.json  # optional spot check
 1. Open Claude Desktop.
 2. Navigate to **Settings → Extensions → Local MCP Servers**.
 3. Click **Import Bundle** and select `tweekit-claude.mcpb`.
-4. Provide `TWEEKIT_API_KEY` and `TWEEKIT_API_SECRET` when prompted.
+4. Provide `TWEEKIT_API_KEY` and `TWEEKIT_API_SECRET` when prompted. Claude forwards these values as request headers, so re-install the bundle after any credential rotation.
 5. Test by asking Claude to list TweekIT tools or convert a sample document.
 
 ## Distribution Notes

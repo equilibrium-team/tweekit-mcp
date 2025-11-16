@@ -8,7 +8,11 @@
   "entry_point": {
     "type": "remote_http",
     "transport": "streamable-http",
-    "url": "https://mcp.tweekit.io/mcp"
+    "url": "https://mcp.tweekit.io/mcp",
+    "headers": {
+      "ApiKey": "{{env.TWEEKIT_API_KEY}}",
+      "ApiSecret": "{{env.TWEEKIT_API_SECRET}}"
+    }
   },
   "environment": [
     {

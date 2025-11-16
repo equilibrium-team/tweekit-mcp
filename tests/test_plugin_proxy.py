@@ -23,7 +23,11 @@ def test_doctype_endpoint(proxy_app):
         return_value=Response(200, json={"ext": "pdf", "mime": "application/pdf"})
     )
 
-    response = client.get("/doctype", params={"ext": "pdf"})
+    response = client.get(
+        "/doctype",
+        params={"ext": "pdf"},
+        headers={"Authorization": "Bearer test-key"},
+    )
 
     assert response.status_code == 200
     assert response.json()["ext"] == "pdf"
@@ -41,7 +45,11 @@ def test_convert_returns_json(proxy_app):
         "outfmt": "txt",
         "blob": base64.b64encode(b"data").decode("ascii"),
     }
-    response = client.post("/convert", json=payload)
+    response = client.post(
+        "/convert",
+        json=payload,
+        headers={"Authorization": "Bearer test-key"},
+    )
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
@@ -64,7 +72,11 @@ def test_convert_returns_binary(proxy_app):
         "outfmt": "pdf",
         "blob": base64.b64encode(b"data").decode("ascii"),
     }
-    response = client.post("/convert", json=payload)
+    response = client.post(
+        "/convert",
+        json=payload,
+        headers={"Authorization": "Bearer test-key"},
+    )
 
     assert response.status_code == 200
     assert response.content == binary
