@@ -50,14 +50,19 @@ curl -X POST -H "Authorization: Bearer $TWEEKIT_API_KEY" \
 
 All three endpoints must return HTTP 200 before publishing.
 
-## ChatGPT Manual Installation
-1. Navigate to *Settings → GPTs → Create new GPT → Configure → Actions*. (You must toggle into “Allow unverified actions” first.)
-2. Choose *Import from URL* and provide `https://mcp.tweekit.io/mcp/.well-known/ai-plugin.json`. The ChatGPT UI fetches both the manifest and `openapi.json`.
-3. When prompted for authentication, paste your TweekIT API key as the bearer token (`Authorization: Bearer …`). The proxy forwards this key as `ApiKey`.
-4. Test actions from the configuration playground:
+## ChatGPT Manual Installation (Developer Settings)
+
+> **Prerequisite:** ChatGPT Pro/Plus users can unlock the full MCP toolset by enabling *Settings → Connectors → Advanced → Developer mode*. Team/Enterprise plans already include Actions access.
+
+1. Open ChatGPT and click your avatar → *Settings & Beta* → *Developer*. Toggle **Enable Actions** if it is off.
+2. Under *User Settings → Developer → Actions*, select **Add Action** and choose **Import from URL**.
+3. Paste `https://mcp.tweekit.io/mcp/.well-known/ai-plugin.json` (or the staging proxy URL). ChatGPT fetches the manifest and OpenAPI schema automatically.
+4. When the Auth screen appears, pick **Bearer Token** and paste your TweekIT API key. The proxy forwards this value as `ApiKey`; you can supply `ApiSecret` later via headers if needed.
+5. Finish the import, then use the *Preview Action* panel to run:
    - `List supported TweekIT doctype options`
-   - `Convert a PNG to PDF` (upload a small sample file)
-   - Verify the action output includes links or binary attachments returned by the proxy.
+   - `Convert a PNG to PDF` (upload a small test file)
+   - Ensure the response includes file attachments or JSON as expected.
+6. Save the Action so it is available to your custom GPTs or workspace.
 
 ## Cloud Run Deployment Checklist
 

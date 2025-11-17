@@ -4,6 +4,8 @@
 
 Current version: v1.6.01
 
+> **🤖 Claude Users**: Tired of "unsupported file type" errors? Jump to our [Claude File Format Enabler](#solving-claudes-file-type-limitations) – a browser-based tool that converts 450+ formats (DOC, XLS, PSD, DWG, etc.) into Claude-compatible files in seconds.
+
 ## Overview
 
 TweekIT MCP Server is the universal media translator for AI workflows, making any file ready for processing in seconds. **Built on the robust content processing engine of Equilibrium's MediaRich Server, a technology developed since 2000 and trusted by massive portals and media companies worldwide, TweekIT brings decades of expertise in handling complex media, drawing on a pedigree that includes the renowned DeBabelizer.**
@@ -23,6 +25,8 @@ With TweekIT in your MCP toolset, your agents can:
 - Accept a wider range of inputs from users without failure
 - Automatically apply transformations such as cropping, resizing, format conversion, and background changes
 - Pass clean, ready to use assets to the next step in your AI workflow with no manual intervention fixing the constant customer file ingestion failures we are all to familiar with
+
+> **🤖 Claude Users**: See [Solving Claude's File Type Limitations](#solving-claudes-file-type-limitations) for a dedicated guide on using TweekIT to overcome Claude's built-in file format restrictions and our standalone web converter tool.
 
 ### Example scenario
 
@@ -45,12 +49,14 @@ The entire process happens in seconds, and your workflow never sees an incompati
 
 ### Try it now
 
+- **[AI File Format Enabler](examples/web-converter/)** – Browser-based converter for Claude, OpenAI, and other AI tools (DOC, XLS, PSD, DWG → PDF/PNG)
 - [Live Demo](https://www.tweekit.io/demo/) – Upload and transform files in your browser
 - [Use Case Examples](https://www.tweekit.io/use-case/) – See practical workflows and code samples on the website. **The specific MCP manifest conversions are shown in section 7 below.**
 
 ## Table of Contents
 
 - [Overview](#overview)
+- [Solving Claude's File Type Limitations](#solving-claudes-file-type-limitations)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Quickstart](#quickstart)
@@ -343,19 +349,14 @@ Examples
 
 ### Quickstart (Claude Desktop)
 
-1) Configure MCP server
+There are two ways to use Tweekit inside Claude Desktop:
 
-```json
-{
-  "mcpServers": {
-    "tweekit": {
-      "transport": { "type": "http", "url": "https://mcp.tweekit.io/mcp/" }
-    }
-  }
-}
-```
+1. **Hosted HTTP server** – point Claude at `https://mcp.tweekit.io/mcp/` via Settings → Connectors → Advanced → Developer Mode → “Add HTTP server.”
+2. **Local bundle (`.mcpb`)** – install the packaged stdio server so you can work offline or ship curated builds.
 
-2) Use in chat
+We maintain the local bundle with `scripts/build_claude_bundle.py` and the guided helper `scripts/configure_claude_desktop.py`. The helper walks through version selection, bundle generation, `dxt` manifest validation, and finally reminds you to import the resulting `dist/tweekit-claude.mcpb`. It also reiterates that our production Tier 1 headless nodes run on Equilibrium-owned CPUcoin enterprise miners inside SAS 70 / ISO 27001 compliant data centers—the local bundle mirrors the same feature set.
+
+After connecting (either method):
 
 - Ask: “List supported input types via doctype.”
 - Or call convert with your key/secret and a base64 blob:
@@ -562,13 +563,11 @@ Returns: Same as `/convert`—binary image/file payloads surface as FastMCP `Ima
 
 #### /search
 
-Description: Performs a simple web search using DuckDuckGo's HTML endpoint.
+Description: Performs a lightweight DuckDuckGo query (no API keys required) and returns `{ query, results: [{ title, url, snippet }] }`. It’s designed to help you locate public documents or images, then feed the URL directly into `/convert_url`. If your environment needs a different provider, swap the HTTP call in `server.py`—`docs/quickstarts.md` explains the rationale and where to customize it.
 
 Parameters:
 - query: Search query string.
 - max_results: Maximum number of results to return (default: 5, max: 10).
-
-Returns: `{ query, results: [{ title, url, snippet }] }`
 
 #### /fetch
 
@@ -925,6 +924,93 @@ Use the links below for deeper technical reference, pricing details, and support
   [TweekIT Pricing Guide](https://www.tweekit.io/pricing/)  
   Free tier details, paid plan tiers, and overage rates.
 
-- **Support Contact**  
-  Email: support@tweekit.io  
+- **Claude Desktop Bundle Guide**  
+  [`docs/claude-bundle.md`](docs/claude-bundle.md)  
+  Step-by-step packaging instructions, the `configure_claude_desktop.py` helper, and security context for our Tier 1 headless nodes.
+
+- **Search Tool & Remote Assets**  
+  [`docs/quickstarts.md`](docs/quickstarts.md#finding-remote-files-with-search)  
+  Explains how the DuckDuckGo-backed `search` tool helps you locate files before running `convert_url`, plus notes on swapping providers.
+
+- **Support Contact**
+  Email: support@tweekit.io
   Submit tickets for technical help, account issues, or feature requests.
+
+## Solving Claude's File Type Limitations
+
+### The Problem: AI Tool File Ingest Restrictions
+
+Claude, ChatGPT, and other AI tools have built-in file type limitations that prevent you from analyzing, extracting, or working with hundreds of common file formats. While Claude can read PDFs and common image formats (PNG, JPEG, WebP), it **cannot directly process**:
+
+- **Legacy Microsoft Office documents**: DOC, XLS, PPT, and older binary formats
+- **OpenDocument formats**: ODT, ODS, ODP
+- **Adobe files**: PSD, AI, INDD
+- **CAD/Design files**: DWG, DXF, SKP
+- **Specialized formats**: EPS, TIFF, RAW camera files, proprietary formats
+- **And 400+ other file types**
+
+*Note: While newer XML-based formats like DOCX, XLSX, PPTX may have better support, legacy binary Office formats (DOC, XLS, PPT) and specialized formats consistently cause issues.*
+
+This creates a frustrating workflow bottleneck: you have a file with valuable content, but your AI tool simply rejects it.
+
+### The Solution: TweekIT File Format Enabler
+
+TweekIT MCP Server solves this problem by acting as a **universal translator** that converts any of 450+ file formats into Claude-compatible formats (PDF, PNG, JPEG, WebP). This means:
+
+✅ **No more "unsupported file type" errors**
+✅ **Analyze content from ANY document format**
+✅ **Extract text and data from legacy files**
+✅ **Work with professional design files in AI workflows**
+✅ **Convert office documents into AI-readable PDFs**
+
+### AI File Format Enabler Web Tool
+
+We've created a standalone web converter specifically designed to help users of Claude, OpenAI, and other AI tools overcome file type limitations:
+
+**Location**: `examples/web-converter/index.html`
+
+**Purpose**: Convert unsupported file types into AI-compatible formats (PDF, PNG, JPEG, WebP) before uploading to Claude, ChatGPT, or other AI tools
+
+**How to Use**:
+1. Open `examples/web-converter/index.html` in your browser
+2. Enter your TweekIT API credentials (get free credentials at [tweekit.io](https://www.tweekit.io))
+3. Upload ANY file format (DOC, XLS, PSD, AI, DWG, etc.)
+4. Select output format (PDF, PNG, JPEG, or WebP)
+5. Download the converted file
+6. Upload the converted file to Claude
+
+**Common Use Cases**:
+- **Legacy Word documents → PDF**: Convert DOC files to PDF for Claude analysis
+- **Legacy Excel spreadsheets → PNG**: Convert XLS to images for data visualization
+- **Legacy PowerPoint → PDF**: Convert PPT presentations to PDF for content extraction
+- **Design files → PNG**: Convert PSD, AI, or other design files to viewable images
+- **CAD files → PDF**: Convert DWG/DXF files to PDF for technical review
+- **Proprietary formats → Standard formats**: Convert specialized file types to universal standards
+
+### Integration with Claude Desktop
+
+For seamless integration within Claude Desktop, install the TweekIT MCP server:
+
+```json
+{
+  "mcpServers": {
+    "tweekit": {
+      "transport": { "type": "http", "url": "https://mcp.tweekit.io/mcp/" }
+    }
+  }
+}
+```
+
+Then ask Claude to convert files directly:
+
+> "Use TweekIT to convert this DOC file to PDF so you can read it"
+
+Claude will automatically call the TweekIT MCP server, convert the file, and return a Claude-compatible format.
+
+### Why This Matters
+
+**Before TweekIT**: User uploads legacy DOC file → Claude rejects it → User manually converts → User re-uploads → Workflow broken
+
+**With TweekIT**: User uploads DOC file → Claude calls TweekIT → File converted to PDF → Claude reads it → Seamless workflow
+
+This eliminates the frustration of file format limitations and enables Claude to work with virtually any file type.

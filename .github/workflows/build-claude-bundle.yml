@@ -1,0 +1,44 @@
+name: ci-claude-bundle
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build Claude bundle
+        run: |
+          python scripts/build_claude_bundle.py \
+            --version "$(python -c "import json; print(json.load(open('claude/manifest.json'))['version'])")" \
+            --output dist/tweekit-claude.ci.mcpb
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Validate manifest schema
+        run: npx @anthropic-ai/dxt@latest validate claude/manifest.json
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tweekit-claude-bundle
+          path: |
+            dist/tweekit-claude.ci.mcpb

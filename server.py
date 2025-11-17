@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import base64
 import json
@@ -22,7 +23,7 @@ logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING
 
 SERVER_VERSION = "1.6.01"
 
-mcp = FastMCP("TweekIT MCP Server - normalize almost any file for AI ingestion")
+mcp = FastMCP("Tweekit MCP Server - convert and/or optimize almost any file on-demand for any AI workflow or website from anywhere")
 
 _EXTENSION_ALIASES = {
     "jpeg": "jpg",
@@ -62,6 +63,19 @@ def _resolve_extension(url: str, override: Optional[str], content_type: Optional
                 return subtype
 
     return "bin"
+
+
+def _resolve_credentials(provided_key: Optional[str], provided_secret: Optional[str]) -> tuple[str, str]:
+    api_key = (provided_key or os.getenv("TWEEKIT_API_KEY") or "").strip()
+    api_secret = (provided_secret or os.getenv("TWEEKIT_API_SECRET") or "").strip()
+    missing = []
+    if not api_key:
+        missing.append("TWEEKIT_API_KEY")
+    if not api_secret:
+        missing.append("TWEEKIT_API_SECRET")
+    if missing:
+        raise RuntimeError(f"Missing TweekIT credentials: {', '.join(missing)}")
+    return api_key, api_secret
 
 
 def _extract_error_details(response: Optional[httpx.Response]) -> str:
@@ -118,25 +132,30 @@ async def mcp_version() -> str:
 
 @mcp.tool()
 async def doctype(
-    apiKey: Annotated[str, Field(description="TweekIT API key passed via the ApiKey header.")],
-    apiSecret: Annotated[str, Field(description="TweekIT API secret paired with the apiKey.")],
+    apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to the TWEEKIT_API_KEY environment variable when omitted.")] = None,
+    apiSecret: Annotated[Optional[str], Field(description="TweekIT API secret paired with the apiKey. Defaults to the TWEEKIT_API_SECRET environment variable when omitted.")] = None,
     extension: Annotated[str, Field(description="File extension to inspect; use '*' to list all supported inputs.")] = "*",
 ) -> Dict[str, Any]:
     """
     Retrieve a list of supported file formats or map a file extension to its document type.
 
     Args:
-        apiKey (str): The API key for authentication.
-        apiSecret (str): The API secret for authentication.
+        apiKey (str): The API key for authentication. Falls back to TWEEKIT_API_KEY when omitted.
+        apiSecret (str): The API secret for authentication. Falls back to TWEEKIT_API_SECRET when omitted.
         extension (str): The file extension to query (e.g., 'jpg', 'pdf') or leave off or use '*' to return all supported input formats.
 
     Returns:
         Dict[str, Any]: A dictionary containing the supported file formats or an error message.
     """
+    try:
+        key, secret = _resolve_credentials(apiKey, apiSecret)
+    except RuntimeError as exc:
+        return {"error": str(exc)}
+
     url = f"{BASE_URL}doctype"
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
-            response = await client.get(url, headers={"ApiKey": apiKey, "ApiSecret": apiSecret}, params={"extension": extension})
+            response = await client.get(url, headers={"ApiKey": key, "ApiSecret": secret}, params={"extension": extension})
             response.raise_for_status()  # Raise an exception for HTTP errors
 
             data = response.json()
@@ -267,11 +286,11 @@ async def _convert_impl(
 
 @mcp.tool()
 async def convert(
-    apiKey: Annotated[str, Field(description="TweekIT API key passed via the ApiKey header.")],
-    apiSecret: Annotated[str, Field(description="TweekIT API secret paired with the apiKey.")],
     inext: Annotated[str, Field(description="Input file extension (e.g., pdf, docx, png).")],
     outfmt: Annotated[str, Field(description="Requested output format to send as Fmt.")],
     blob: Annotated[str, Field(description="Base64 encoded document payload (DocData).")],
+    apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to the TWEEKIT_API_KEY environment variable when omitted.")] = None,
+    apiSecret: Annotated[Optional[str], Field(description="TweekIT API secret paired with the apiKey. Defaults to the TWEEKIT_API_SECRET environment variable when omitted.")] = None,
     noRasterize: Annotated[bool, Field(description="Forward to TweekIT to disable rasterization when supported.")] = False,
     width: Annotated[int, Field(description="Optional pixel width for the converted output.")] = 0,
     height: Annotated[int, Field(description="Optional pixel height for the converted output.")] = 0,
@@ -290,11 +309,11 @@ async def convert(
     outputs, set `alpha`/`bgColor` to control transparency handling.
 
     Args:
-        apiKey: TweekIT API key (`ApiKey` header).
-        apiSecret: TweekIT API secret (`ApiSecret` header).
         inext: Source file extension such as `pdf`, `docx`, or `png`.
         outfmt: Desired output format (`Fmt` in the API body).
         blob: Base64 encoded document payload (`DocData`).
+        apiKey: TweekIT API key (`ApiKey` header). Falls back to `TWEEKIT_API_KEY` env var.
+        apiSecret: TweekIT API secret (`ApiSecret` header). Falls back to `TWEEKIT_API_SECRET` env var.
         noRasterize: Forwarded to TweekIT to skip rasterization when possible.
         width: Optional pixel width to request in the output.
         height: Optional pixel height to request in the output.
@@ -309,9 +328,14 @@ async def convert(
     Returns:
         A FastMCP `Image` or `File` payload, or an error description.
     """
+    try:
+        key, secret = _resolve_credentials(apiKey, apiSecret)
+    except RuntimeError as exc:
+        return {"error": str(exc)}
+
     return await _convert_impl(
-        apiKey=apiKey,
-        apiSecret=apiSecret,
+        apiKey=key,
+        apiSecret=secret,
         inext=inext,
         outfmt=outfmt,
         blob=blob,
@@ -401,10 +425,10 @@ async def _convert_url_impl(
 
 @mcp.tool()
 async def convert_url(
-    apiKey: Annotated[str, Field(description="TweekIT API key passed via the ApiKey header.")],
-    apiSecret: Annotated[str, Field(description="TweekIT API secret paired with the apiKey.")],
     url: Annotated[str, Field(description="Direct download URL for the source document or image.")],
     outfmt: Annotated[str, Field(description="Requested output format to send as Fmt.")],
+    apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to the TWEEKIT_API_KEY environment variable when omitted.")] = None,
+    apiSecret: Annotated[Optional[str], Field(description="TweekIT API secret paired with the apiKey. Defaults to the TWEEKIT_API_SECRET environment variable when omitted.")] = None,
     inext: Annotated[Optional[str], Field(description="Override for the detected input extension (e.g., pdf).")] = None,
     noRasterize: Annotated[bool, Field(description="Forward to TweekIT to disable rasterization when supported.")] = False,
     width: Annotated[int, Field(description="Optional pixel width for the converted output.")] = 0,
@@ -425,10 +449,10 @@ async def convert_url(
     remote resource needs authentication or custom headers.
 
     Args:
-        apiKey: TweekIT API key (`ApiKey` header).
-        apiSecret: TweekIT API secret (`ApiSecret` header).
         url: Direct download URL for the source document or image.
         outfmt: Desired output format (`Fmt`).
+        apiKey: TweekIT API key (`ApiKey` header). Falls back to `TWEEKIT_API_KEY` env var.
+        apiSecret: TweekIT API secret (`ApiSecret` header). Falls back to `TWEEKIT_API_SECRET` env var.
         inext: Optional override for the source extension if it cannot be
             detected from the URL or response headers.
         noRasterize: Forwarded to TweekIT to skip rasterization when possible.
@@ -446,9 +470,14 @@ async def convert_url(
     Returns:
         A FastMCP `Image` or `File` payload, or an error description.
     """
+    try:
+        key, secret = _resolve_credentials(apiKey, apiSecret)
+    except RuntimeError as exc:
+        return {"error": str(exc)}
+
     return await _convert_url_impl(
-        apiKey=apiKey,
-        apiSecret=apiSecret,
+        apiKey=key,
+        apiSecret=secret,
         url=url,
         outfmt=outfmt,
         inext=inext,
@@ -558,21 +587,51 @@ async def search(
         return {"error": f"Unexpected error: {e}"}
 
 
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run the TweekIT MCP server.")
+    parser.add_argument(
+        "--transport",
+        choices=["streamable-http", "stdio"],
+        default=os.getenv("MCP_TRANSPORT", "streamable-http"),
+        help="Transport to expose (default: streamable-http).",
+    )
+    parser.add_argument(
+        "--host",
+        default=os.getenv("HOST", "0.0.0.0"),
+        help="Host for streamable-http transport (default: 0.0.0.0).",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("PORT", "8080")),
+        help="Port for streamable-http transport (default: 8080).",
+    )
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    logger.info(f"🚀 TweekIT MCP server started on port {os.getenv('PORT', 8080)}")
-    # Could also use 'sse' transport, host="0.0.0.0" required for Cloud Run.
+    args = _parse_args()
+
+    if args.transport == "streamable-http":
+        logger.info("🚀 TweekIT MCP server starting (HTTP) on %s:%s", args.host, args.port)
+    else:
+        logger.info("🚀 TweekIT MCP server starting (stdio)")
+
+    rpc_kwargs = {}
+    if args.transport == "streamable-http":
+        rpc_kwargs.update({"host": args.host, "port": args.port})
+
     try:
         asyncio.run(
             mcp.run_async(
-                transport="streamable-http",
-                host="0.0.0.0",
-                port=os.getenv("PORT", 8080),
+                transport=args.transport,
+                **rpc_kwargs,
             )
         )
     except KeyboardInterrupt:
         logger.info("Server stopped by user.")
     except Exception as e:
-        logger.error(f"An error occurred while running the server: {e}")
+        logger.error("An error occurred while running the server: %s", e)
         raise
     finally:
         logger.info("Server shutdown complete.")

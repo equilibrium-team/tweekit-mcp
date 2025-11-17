@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI File Format Enabler | TweekIT</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .header-logo {
+            width: 140px;
+            height: auto;
+            background: white;
+            border-radius: 12px;
+            padding: 12px;
+            flex-shrink: 0;
+        }
+        .header-logo img {
+            width: 100%;
+            height: auto;
+            object-fit: contain;
+        }
+        .header-content {
+            flex: 1;
+        }
+        .header h1 { font-size: 32px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 14px; }
+        .content { padding: 40px; }
+        .info-banner {
+            background: #e3f2fd;
+            border: 1px solid #90caf9;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 32px;
+        }
+        .credentials {
+            background: #fff3e0;
+            border: 1px solid #ffb74d;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+            transition: all 0.3s ease;
+        }
+        .credentials.collapsed {
+            padding: 12px 20px;
+            cursor: pointer;
+        }
+        .credentials.collapsed:hover {
+            background: #ffe0b2;
+        }
+        .credentials-content {
+            transition: all 0.3s ease;
+        }
+        .credentials.collapsed .credentials-content {
+            display: none;
+        }
+        .credentials-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .credentials-status {
+            font-size: 12px;
+            color: #4caf50;
+            font-weight: 600;
+        }
+        .credentials input {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: monospace;
+        }
+        .credentials button {
+            background: #ff9800;
+            color: white;
+            padding: 10px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 8px;
+        }
+        .feature-request {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 24px;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+        .feature-request a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 12px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+        .upload-btn {
+            background: #667eea;
+            color: white;
+            padding: 14px 32px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .file-input { display: none; }
+        .format-select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+        .convert-btn {
+            width: 100%;
+            background: #667eea;
+            color: white;
+            padding: 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .hidden { display: none; }
+        .success {
+            background: #e8f5e9;
+            border: 1px solid #4caf50;
+            border-radius: 8px;
+            padding: 24px;
+            text-align: center;
+        }
+        .download-btn {
+            background: #4caf50;
+            color: white;
+            padding: 14px 32px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            margin: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-logo">
+                <img src="https://tweekit.io/images/logo.png" alt="TweekIT Logo">
+            </div>
+            <div class="header-content">
+                <h1>🤖 AI File Format Enabler</h1>
+                <p>Convert unsupported file types for Claude, OpenAI, and other AI tools (PDF, PNG, JPEG, WebP)</p>
+            </div>
+        </div>
+        <div class="content">
+            <div class="info-banner">
+                <strong>🎯 Solve AI File Ingest Problems</strong><br>
+                Claude, OpenAI ChatGPT, and other AI tools have built-in file type limitations. They can't directly read many legacy document formats like .DOC, .XLS, .PPT, .ODT, .DWG, .AI files, and hundreds more.<br><br>
+                This converter solves that problem by transforming <strong>any of 450+ file formats</strong> into AI-compatible formats (PDF, PNG, JPEG, WebP) so you can analyze, extract, and work with content from files that would otherwise be rejected.<br><br>
+                <strong>Works seamlessly with:</strong> Claude Desktop, ChatGPT, Gemini, and any AI tool accepting PDF/image inputs.
+            </div>
+            <div class="credentials" id="credentialsBox">
+                <div class="credentials-header" onclick="toggleCredentials()">
+                    <strong>🔑 API Credentials</strong>
+                    <span class="credentials-status" id="credentialsStatus" style="display: none;">✓ Configured</span>
+                </div>
+                <div class="credentials-content">
+                    <input type="text" id="apiKey" placeholder="TweekIT API Key">
+                    <input type="password" id="apiSecret" placeholder="TweekIT API Secret">
+                    <button onclick="saveCredentials()">Save Credentials</button>
+                    <p style="font-size: 12px; margin-top: 12px; color: #666;">
+                        Credentials are stored locally in your browser. Get yours at <a href="https://www.tweekit.io" target="_blank">tweekit.io</a>
+                    </p>
+                </div>
+            </div>
+            <div id="upload-section">
+                <div class="upload-area">
+                    <p style="font-size: 48px; margin-bottom: 16px;">📁</p>
+                    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
+                        Select File
+                    </button>
+                    <input type="file" id="fileInput" class="file-input" accept="*/*">
+                </div>
+                <div class="feature-request">
+                    💡 <strong>Looking for a feature? We want to know!</strong><br>
+                    Send your feature request or bug report to <a href="mailto:support@tweekit.io">support@tweekit.io</a>
+                </div>
+            </div>
+            <div id="conversion-section" class="hidden">
+                <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+                    <p id="fileInfo"></p>
+                </div>
+                <select id="formatSelect" class="format-select">
+                    <option value="pdf">PDF</option>
+                    <option value="png">PNG</option>
+                    <option value="jpg">JPEG</option>
+                    <option value="webp">WebP</option>
+                </select>
+                <button class="convert-btn" onclick="convertFile()">Convert</button>
+            </div>
+            <div id="success-section" class="hidden">
+                <div class="success">
+                    <p style="font-size: 48px;">✅</p>
+                    <h3>Success!</h3>
+                    <a id="downloadLink" class="download-btn" download>Download</a>
+                    <button class="upload-btn" onclick="reset()">Convert Another</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        let selectedFile = null;
+
+        // Load saved credentials on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            const apiKey = localStorage.getItem('tweekit_api_key');
+            const apiSecret = localStorage.getItem('tweekit_api_secret');
+            if (apiKey) document.getElementById('apiKey').value = apiKey;
+            if (apiSecret) document.getElementById('apiSecret').value = apiSecret;
+
+            // Collapse credentials if already saved
+            if (apiKey && apiSecret) {
+                document.getElementById('credentialsBox').classList.add('collapsed');
+                document.getElementById('credentialsStatus').style.display = 'inline';
+            }
+        });
+
+        function toggleCredentials() {
+            const box = document.getElementById('credentialsBox');
+            box.classList.toggle('collapsed');
+        }
+
+        function saveCredentials() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const apiSecret = document.getElementById('apiSecret').value.trim();
+            if (apiKey && apiSecret) {
+                localStorage.setItem('tweekit_api_key', apiKey);
+                localStorage.setItem('tweekit_api_secret', apiSecret);
+
+                // Collapse the credentials box and show status
+                document.getElementById('credentialsBox').classList.add('collapsed');
+                document.getElementById('credentialsStatus').style.display = 'inline';
+
+                alert('✓ Credentials saved successfully!');
+            } else {
+                alert('Please enter both API Key and Secret');
+            }
+        }
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            selectedFile = file;
+            document.getElementById('fileInfo').textContent = file.name;
+            document.getElementById('upload-section').classList.add('hidden');
+            document.getElementById('conversion-section').classList.remove('hidden');
+        }
+
+        async function convertFile() {
+            if (!selectedFile) return;
+
+            const apiKey = localStorage.getItem('tweekit_api_key');
+            const apiSecret = localStorage.getItem('tweekit_api_secret');
+
+            if (!apiKey || !apiSecret) {
+                alert('Please save your API credentials first!');
+                return;
+            }
+
+            const outputFormat = document.getElementById('formatSelect').value;
+            const inputExt = selectedFile.name.split('.').pop().toLowerCase();
+
+            try {
+                const arrayBuffer = await selectedFile.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+                const base64Data = btoa(uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), ''));
+
+                const response = await fetch('https://api.tweekit.com/v1/convert', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'ApiKey': apiKey,
+                        'ApiSecret': apiSecret
+                    },
+                    body: JSON.stringify({
+                        DocData: base64Data,
+                        DocDataType: inputExt,
+                        Fmt: outputFormat
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Conversion failed (${response.status}): ${errorText}`);
+                }
+
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+
+                document.getElementById('conversion-section').classList.add('hidden');
+                document.getElementById('success-section').classList.remove('hidden');
+
+                const downloadLink = document.getElementById('downloadLink');
+                downloadLink.href = url;
+                downloadLink.download = `converted.${outputFormat}`;
+            } catch (error) {
+                alert('Conversion Error: ' + error.message);
+                console.error('Conversion error:', error);
+            }
+        }
+
+        function reset() {
+            selectedFile = null;
+            document.getElementById('upload-section').classList.remove('hidden');
+            document.getElementById('conversion-section').classList.add('hidden');
+            document.getElementById('success-section').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
