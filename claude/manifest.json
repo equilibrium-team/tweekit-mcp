@@ -1,37 +1,60 @@
 {
-  "schema_version": "1.0",
-  "name": "TweekIT Converter",
-  "description": "Normalize and convert documents for AI ingestion with the TweekIT MCP server.",
-  "version": "0.1.0",
-  "author": "TweekIT",
+  "dxt_version": "0.1",
+  "name": "tweekit-mcp",
+  "display_name": "Tweekit MCP Server",
+  "version": "1.6.01",
+  "description": "Tweekit MCP Server - convert and/or optimize almost any file on-demand for any AI workflow or website from anywhere.",
+  "author": {
+    "name": "Equilibrium.com & CPUcoin.io"
+  },
   "homepage": "https://tweekit.com",
-  "entry_point": {
-    "type": "remote_http",
-    "transport": "streamable-http",
-    "url": "https://mcp.tweekit.io/mcp"
-  },
-  "environment": [
-    {
-      "name": "TWEEKIT_API_KEY",
-      "required": true,
-      "description": "API key used to authenticate against the upstream TweekIT service."
-    },
-    {
-      "name": "TWEEKIT_API_SECRET",
-      "required": true,
-      "description": "API secret paired with the API key for privileged conversions."
+  "documentation": "https://github.com/equilibrium-team/tweekit-mcp",
+  "server": {
+    "type": "python",
+    "entry_point": "server/server.py",
+    "mcp_config": {
+      "command": "python3",
+      "args": [
+        "${__dirname}/server/server.py",
+        "--transport",
+        "stdio"
+      ],
+      "env": {
+        "PYTHONPATH": "${__dirname}/python",
+        "TWEEKIT_API_KEY": "${user_config.TWEEKIT_API_KEY}",
+        "TWEEKIT_API_SECRET": "${user_config.TWEEKIT_API_SECRET}"
+      },
+      "platform_overrides": {
+        "win32": {
+          "command": "python"
+        }
+      }
     }
-  ],
-  "capabilities": [
-    "document-conversion",
-    "format-inspection"
-  ],
-  "permissions": {
-    "network_access": true,
-    "filesystem_access": false
   },
-  "metadata": {
-    "support": "support@tweekit.com",
-    "legal": "https://tweekit.com/legal"
+  "license": "Proprietary",
+  "user_config": {
+    "TWEEKIT_API_KEY": {
+      "type": "string",
+      "title": "TweekIT API Key",
+      "description": "API key used to authenticate against the upstream TweekIT service.",
+      "required": true,
+      "sensitive": true
+    },
+    "TWEEKIT_API_SECRET": {
+      "type": "string",
+      "title": "TweekIT API Secret",
+      "description": "API secret paired with the API key for privileged conversions.",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32"
+    ],
+    "runtimes": {
+      "python": ">=3.10"
+    }
   }
 }
