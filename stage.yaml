@@ -1,0 +1,4 @@
+# Environment variables for the staging deployment
+# This file is in YAML format as required by gcloud run deploy --env-vars-file
+PLUGIN_PUBLIC_BASE_URL: https://tweekit-plugin-stage-958133016924.us-west1.run.app
+TWEEKIT_API_BASE_URL: https://dapp.tweekit.io/tweekit/api/image/
