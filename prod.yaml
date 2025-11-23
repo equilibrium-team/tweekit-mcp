@@ -1,0 +1,4 @@
+# Environment variables for the production plugin deployment
+PLUGIN_PUBLIC_BASE_URL: https://plugin.tweekit.io/mcp
+# Point to the public TweekIT REST API, not the internal MCP server
+TWEEKIT_API_BASE_URL: https://dapp.tweekit.io/tweekit/api/image/
