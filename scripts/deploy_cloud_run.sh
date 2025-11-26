@@ -9,7 +9,7 @@
 #   --env-file <PATH>             Optional env vars file (YAML for Cloud Run, dotenv for local docker)
 #   --image-repo <REPO>           Container repo (default: gcr.io/PROJECT/tweekit-mcp)
 #   --service-stage <NAME>        Override stage service name (default: tweekit-mcp-stage)
-#   --service-prod <NAME>         Override prod service name (default: tweekit-mcp)
+#   --service-prod <NAME>         Override prod service name (default: tweekit-mcp-prod)
 #   --no-allow-unauthenticated    Skip --allow-unauthenticated flag
 #   --skip-build                  Deploy existing image (requires --image-uri)
 #   --image-uri <URI>             Full image URI; implies --skip-build unless overridden
@@ -52,7 +52,7 @@ IMAGE_REPO=""
 IMAGE_URI=""
 ALLOW_UNAUTH=1
 SERVICE_STAGE="tweekit-mcp-stage"
-SERVICE_PROD="tweekit-mcp"
+SERVICE_PROD="tweekit-mcp-prod"
 SKIP_BUILD=0
 LOCAL_PORT=8080
 RUN_LOCAL=1
