@@ -10,7 +10,7 @@ from fastmcp import Client
 # Test the MCP server using streamable-http transport.
 # Use "/sse" endpoint if using sse transport.
 
-MCP_URL = os.environ.get("TWEEKIT_MCP_BASE_URL", "https://mcp.tweekit.io/mcp/")
+MCP_URL = os.environ.get("TWEEKIT_MCP_BASE_URL", "https://mcp.tweekit.io/mcp")
 API_KEY = (
     os.environ.get("TWEEKIT_API_KEY")
     or os.environ.get("TWEEKIT_APIKEY")

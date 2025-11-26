@@ -23,9 +23,14 @@ logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING
 
 SERVER_VERSION = "1.6.01"
 
-mcp = FastMCP("Tweekit MCP Server - convert and/or optimize almost any file on-demand for any AI workflow or website from anywhere")
+mcp = FastMCP(
+    "Tweekit MCP Server - convert and/or optimize almost any file on-demand for any AI workflow or website from anywhere",
+    stateless_http=True
+)
 
-_EXTENSION_ALIASES = {
+# Remapping table so files with the alternate versions of known filename extensions aren't rejected.
+# (Though I think MediaRich already supports these, so I don't know why this is here....)
+_EXTENSION_ALIASES: Dict[str, str] = {
     "jpeg": "jpg",
     "jpe": "jpg",
     "tif": "tiff",

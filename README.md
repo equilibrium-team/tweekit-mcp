@@ -187,7 +187,7 @@ Once authenticated, you can:
 
 All tools and resources are available here, used for testing and free trials:
 
-- Public MCP endpoint (HTTP transport): [https://mcp.tweekit.io/mcp/](https://mcp.tweekit.io/mcp/)
+- Public MCP endpoint (HTTP transport): [https://mcp.tweekit.io/mcp](https://mcp.tweekit.io/mcp)
 
 The currently available resource name is 'version'. The currently available tool names are 'doctype', 'convert', and 'convert_url'. See below for parameters, or query the MCP server as it will return metadata instructing use of each of these.
 
@@ -282,7 +282,7 @@ Examples
   {
     "mcpServers": {
       "tweekit": {
-        "transport": { "type": "http", "url": "https://mcp.tweekit.io/mcp/" }
+        "transport": { "type": "http", "url": "https://mcp.tweekit.io/mcp" }
       }
     }
   }
@@ -311,7 +311,7 @@ Examples
   import { Client } from "@modelcontextprotocol/sdk/client";
   import { HttpClientTransport } from "@modelcontextprotocol/sdk/client/transport/http";
 
-  const transport = new HttpClientTransport(new URL("https://mcp.tweekit.io/mcp/"));
+  const transport = new HttpClientTransport(new URL("https://mcp.tweekit.io/mcp"));
   const client = new Client({ name: "tweekit-example", version: "1.0.0" }, { capabilities: {} }, transport);
   await client.connect();
   const tools = await client.listTools();
@@ -331,7 +331,7 @@ Examples
   from fastmcp import Client
 
   async def main():
-      async with Client("https://mcp.tweekit.io/mcp/") as c:
+      async with Client("https://mcp.tweekit.io/mcp") as c:
           print(await c.list_tools())
           out = await c.call_tool(
               "convert",
@@ -351,7 +351,7 @@ Examples
 
 There are two ways to use Tweekit inside Claude Desktop:
 
-1. **Hosted HTTP server** – point Claude at `https://mcp.tweekit.io/mcp/` via Settings → Connectors → Advanced → Developer Mode → “Add HTTP server.”
+1. **Hosted HTTP server** – point Claude at `https://mcp.tweekit.io/mcp` via Settings → Connectors → Advanced → Developer Mode → “Add HTTP server.”
 2. **Local bundle (`.mcpb`)** – install the packaged stdio server so you can work offline or ship curated builds.
 
 We maintain the local bundle with `scripts/build_claude_bundle.py` and the guided helper `scripts/configure_claude_desktop.py`. The helper walks through version selection, bundle generation, `dxt` manifest validation, and finally reminds you to import the resulting `dist/tweekit-claude.mcpb`. It also reiterates that our production Tier 1 headless nodes run on Equilibrium-owned CPUcoin enterprise miners inside SAS 70 / ISO 27001 compliant data centers—the local bundle mirrors the same feature set.
@@ -372,7 +372,7 @@ After connecting (either method):
 
 If your ChatGPT environment supports MCP tools, add an HTTP MCP server pointing to the public endpoint.
 
-1) Configure server: URL `https://mcp.tweekit.io/mcp/` (HTTP transport)
+1) Configure server: URL `https://mcp.tweekit.io/mcp` (HTTP transport)
 2) Use tools in a chat:
 
 - doctype
@@ -995,7 +995,7 @@ For seamless integration within Claude Desktop, install the TweekIT MCP server:
 {
   "mcpServers": {
     "tweekit": {
-      "transport": { "type": "http", "url": "https://mcp.tweekit.io/mcp/" }
+      "transport": { "type": "http", "url": "https://mcp.tweekit.io/mcp" }
     }
   }
 }

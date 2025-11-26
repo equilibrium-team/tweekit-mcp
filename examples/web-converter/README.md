@@ -138,7 +138,7 @@ For seamless integration, install the TweekIT MCP server in Claude Desktop:
 {
   "mcpServers": {
     "tweekit": {
-      "transport": { "type": "http", "url": "https://mcp.tweekit.io/mcp/" }
+      "transport": { "type": "http", "url": "https://mcp.tweekit.io/mcp" }
     }
   }
 }
