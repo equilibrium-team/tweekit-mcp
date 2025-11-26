@@ -197,7 +197,7 @@ try:
         mcp,
         streamable_http_path="/mcp",
         json_response=True,
-        stateless_http=False,
+        stateless_http=True,
         debug=False,
     )
 
