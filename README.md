@@ -2,7 +2,7 @@
 
 *Ingest and Convert Just About Any Filetype Into AI Workflows*
 
-Current version: v1.6.01
+Current version: v1.6.1
 
 > **🤖 Claude Users**: Tired of "unsupported file type" errors? Jump to our [Claude File Format Enabler](#solving-claudes-file-type-limitations) – a browser-based tool that converts 450+ formats (DOC, XLS, PSD, DWG, etc.) into Claude-compatible files in seconds.
 

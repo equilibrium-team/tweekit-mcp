@@ -1,6 +1,6 @@
 [project]
 name = "tweekit-mcp"
-version = "1.6.01"
+version = "1.6.1"
 description = "Official TweekIT Model Context Protocol server and plugin proxy."
 readme = "README.md"
 license = { file = "LICENSE" }
