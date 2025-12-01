@@ -1,7 +1,28 @@
 [project]
-name = "maitrix-mcp"
+name = "tweekit-mcp"
 version = "1.6.01"
-description = "Maitrix/TweekIT MCP server on Cloud Run"
+description = "Official TweekIT Model Context Protocol server and plugin proxy."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Equilibrium Labs", email = "support@tweekit.com" },
+]
+maintainers = [
+    { name = "Equilibrium Labs", email = "support@tweekit.com" },
+]
+keywords = ["mcp", "tweekit", "fastmcp", "converter", "ai-tools"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 requires-python = ">=3.10"
 dependencies = [
     "fastmcp>=2.12.0",
@@ -15,6 +36,23 @@ dev = [
     "pytest-asyncio>=0.23",
     "respx>=0.21",
 ]
+
+[project.urls]
+Homepage = "https://www.tweekit.io/"
+Documentation = "https://github.com/equilibrium-team/tweekit-mcp#readme"
+Source = "https://github.com/equilibrium-team/tweekit-mcp"
+Issues = "https://github.com/equilibrium-team/tweekit-mcp/issues"
+
+[project.scripts]
+tweekit-mcp = "server:main"
+
+[tool.setuptools]
+py-modules = ["server", "plugin_proxy"]
+include-package-data = true
+
+[tool.setuptools.data-files]
+"share/tweekit_mcp" = ["server.json"]
+"share/tweekit_mcp/assets" = ["assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = [

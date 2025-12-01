@@ -614,7 +614,7 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-if __name__ == "__main__":
+def main() -> None:
     args = _parse_args()
 
     if args.transport == "streamable-http":
@@ -640,3 +640,7 @@ if __name__ == "__main__":
         raise
     finally:
         logger.info("Server shutdown complete.")
+
+
+if __name__ == "__main__":
+    main()

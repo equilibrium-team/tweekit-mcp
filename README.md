@@ -87,22 +87,40 @@ The entire process happens in seconds, and your workflow never sees an incompati
 
 ## Installation
 
-1. Clone the repository:
+### Option 1: Install from PyPI (recommended)
 
-   ```bash
-   git clone https://github.com/equilibrium-team/tweekit-mcp.git
-   cd tweekit-mcp
-   ```
+```bash
+# Using pip
+pip install tweekit-mcp
 
-2. Install dependencies:
+# Using uv
+uv pip install tweekit-mcp
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+# Using pipx (isolated environment)
+pipx install tweekit-mcp
+```
 
-3. Set up environment variables:
+Run the MCP server locally:
 
-   - **PORT**: The port on which the server will run (default: 8080).
+```bash
+tweekit-mcp --transport streamable-http --port 8080
+```
+
+The CLI wraps `server.py` and accepts the same flags (`--transport`, `--host`, `--port`).
+
+### Option 2: Clone the repository
+
+```bash
+git clone https://github.com/equilibrium-team/tweekit-mcp.git
+cd tweekit-mcp
+uv sync            # or: pip install -r requirements.txt
+```
+
+Set environment variables as needed:
+
+- **PORT** – Streamable HTTP port (default: 8080).
+- **PLUGIN_PROXY_PORT** – Port for the ChatGPT plugin proxy (default: 8080 when running standalone).
+- **MCP_SERVER_PORT** – Internal port for the MCP server when using `start_services.sh` (default: 8000).
 
 ## Quickstart
 
