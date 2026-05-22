@@ -221,3 +221,7 @@ tests/output/*
 .DS_Store
 tests/.DS_Store
 functions/packages/
+
+# Local AI agent data
+.claude/
+.swarm/

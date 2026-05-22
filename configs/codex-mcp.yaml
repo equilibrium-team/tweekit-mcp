@@ -1,0 +1,22 @@
+# TweekIT MCP Server — OpenAI Codex CLI Configuration
+#
+# File location: ~/.codex/config.yaml
+# Install Codex CLI: npm install -g @openai/codex
+#
+# Merge the mcpServers block below into your existing config, or use this
+# file as a starting point. Set TWEEKIT_API_KEY and TWEEKIT_API_SECRET in
+# your environment before launching Codex.
+#
+# One-liner to add credentials:
+#   export TWEEKIT_API_KEY=your_key TWEEKIT_API_SECRET=your_secret
+#
+# One-liner plugin install (run from any directory):
+#   codex --mcp-server tweekit:https://mcp.tweekit.io/mcp
+
+mcpServers:
+  tweekit:
+    type: http
+    url: https://mcp.tweekit.io/mcp
+    headers:
+      ApiKey: "${TWEEKIT_API_KEY}"
+      ApiSecret: "${TWEEKIT_API_SECRET}"

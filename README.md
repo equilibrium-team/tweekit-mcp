@@ -67,6 +67,7 @@ The entire process happens in seconds, and your workflow never sees an incompati
   - [Quickstart (ChatGPT MCP)](#quickstart-chatgpt-mcp)
   - [Quickstart (Cursor IDE)](#quickstart-cursor-ide)
   - [Quickstart (Continue IDE)](#quickstart-continue-ide)
+  - [Quickstart (OpenAI Codex CLI)](#quickstart-openai-codex-cli)
 - [Rate Limits and Pricing](#rate-limits-and-pricing)
 - [Core Concepts](#core-concepts)
 - [MCP API Reference](#mcp-reference)
@@ -288,9 +289,12 @@ Pass `--project <PROJECT_ID>` if you need to override the active `gcloud` config
 
 ## Client Compatibility
 
-- Claude: Compatible (discovers tools via listTools; works with HTTP transport).
-- ChatGPT (OpenAI): Compatible (provides required tools: `search`, `fetch`).
-- Cursor: Not targeted (no workspace/file tools exposed).
+- Claude Desktop / claude.ai: Compatible (HTTP transport; `.mcpb` bundle available).
+- ChatGPT (OpenAI): Compatible (HTTP transport; plugin proxy available).
+- OpenAI Codex CLI: Compatible (`--mcp-server` flag or `~/.codex/config.yaml`).
+- Cursor: Compatible (HTTP transport via `~/.cursor/mcp.json`).
+- Continue (VS Code / JetBrains): Compatible (Streamable HTTP via `~/.continue/config.json`).
+- Windsurf / Sourcegraph Cody: Compatible (HTTP MCP endpoints via beta settings).
 
 Examples
 
@@ -462,6 +466,40 @@ After saving the configuration:
 2. Use the Continue “Tools” panel to call `doctype`, `convert`, or `convert_url` with the appropriate parameters.
 3. Document workspace-specific credential steps so teammates can connect quickly.
 
+### Quickstart (OpenAI Codex CLI)
+
+OpenAI Codex CLI (`@openai/codex`) supports MCP servers as first-class plugins. There are two ways to add TweekIT:
+
+**Option A — One-liner easy plugin (no config file needed):**
+
+```bash
+export TWEEKIT_API_KEY=your_key TWEEKIT_API_SECRET=your_secret
+codex --mcp-server tweekit:https://mcp.tweekit.io/mcp
+```
+
+Pass the `--mcp-server` flag each session, or alias it in your shell profile for permanent access.
+
+**Option B — Persistent config** (`~/.codex/config.yaml`):
+
+Merge the entry below (also at `configs/codex-mcp.yaml`) into your Codex config:
+
+```yaml
+mcpServers:
+  tweekit:
+    type: http
+    url: https://mcp.tweekit.io/mcp
+    headers:
+      ApiKey: “${TWEEKIT_API_KEY}”
+      ApiSecret: “${TWEEKIT_API_SECRET}”
+```
+
+After connecting via either method:
+- Ask: “List supported input types via TweekIT doctype.”
+- Or: “Use TweekIT to convert this DOC file to PDF so you can read it.”
+- Or: “Convert the image at `<url>` to WebP at 800×600.”
+
+> **Install Codex CLI:** `npm install -g @openai/codex`
+
 ## Rate Limits and Pricing
 
 TweekIT offers a generous free tier so you can explore and integrate without cost.
@@ -469,7 +507,7 @@ TweekIT offers a generous free tier so you can explore and integrate without cos
 ### Free Tier
 
 - **10,000 API calls** included at no charge.
-- Full access to all core upload, preview, and download capabilities.
+- Full access to all core upload, preview, download, and delete capabilities.
 - No credit card required to start.
 
 ### Paid Plans
@@ -638,7 +676,7 @@ Automatically crop and resize images into a consistent size and format.
 **Equivalent REST Example (requires a separate upload step)**
 
 ```bash
-curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
+curl -X POST "https://dapp.tweekit.io/tweekit/api/image/{docId}" \
   -H "apikey: {Your API Key}" \
   -H "apisecret: {Your API Secret}" \
   -H "Content-Type: application/json;charset=UTF-8" \
@@ -673,7 +711,7 @@ Process identity document photos into standardized formats for automated verific
 **Equivalent REST Example**
 
 ```bash
-curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
+curl -X POST "https://dapp.tweekit.io/tweekit/api/image/{docId}" \
   -H "apikey: {Your API Key}" \
   -H "apisecret: {Your API Secret}" \
   -H "Content-Type: application/json;charset=UTF-8" \
@@ -708,7 +746,7 @@ Generate platform-specific product images with correct aspect ratios and backgro
 **Equivalent REST Example**
 
 ```bash
-curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
+curl -X POST "https://dapp.tweekit.io/tweekit/api/image/{docId}" \
   -H "apikey: {Your API Key}" \
   -H "apisecret: {Your API Secret}" \
   -H "Content-Type: application/json;charset=UTF-8" \
@@ -741,7 +779,7 @@ Convert files between formats for compatibility across different tools and workf
 **Equivalent REST Example**
 
 ```bash
-curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
+curl -X POST "https://dapp.tweekit.io/tweekit/api/image/{docId}" \
   -H "apikey: {Your API Key}" \
   -H "apisecret: {Your API Secret}" \
   -H "Content-Type: application/json;charset=UTF-8" \
@@ -774,12 +812,24 @@ Convert complex document or legacy filetypes from original formats into PDF file
 **Equivalent REST Example**
 
 ```bash
-curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
+curl -X POST "https://dapp.tweekit.io/tweekit/api/image/{docId}" \
   -H "apikey: {Your API Key}" \
   -H "apisecret: {Your API Secret}" \
   -H "Content-Type: application/json;charset=UTF-8" \
   -d '{"fmt": "pdf", noRasterize: true}'
 ```
+
+### Explicit Document Cleanup (REST API)
+
+To immediately delete a document and all its associated files before the 20-minute auto-expiry, use the `DELETE` endpoint. This is useful when a user cancels a workflow mid-session. The MCP `delete_document` tool wraps this call.
+
+```bash
+curl -X DELETE "https://dapp.tweekit.io/tweekit/api/image/{docId}" \
+  -H "apikey: {Your API Key}" \
+  -H "apisecret: {Your API Secret}"
+```
+
+> **Note:** Documents expire automatically after 20 minutes regardless. Explicit deletion is optional but recommended for security-sensitive workflows.
 
 ## Demo + Show Code
 
@@ -829,7 +879,7 @@ Every action in the demo can display corresponding code for:
 - **curl**
 
   ```bash
-  curl -X POST "https://www.tweekit.io/tweekit/api/image/preview/{docId}" \
+  curl -X POST "https://dapp.tweekit.io/tweekit/api/image/{docId}" \
     -H "apikey: {Your API Key}" \
     -H "apisecret: {Your API Secret}" \
     -H "Content-Type: application/json;charset=UTF-8" \

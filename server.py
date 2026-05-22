@@ -21,7 +21,7 @@ BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING)
 
-SERVER_VERSION = "1.6.01"
+SERVER_VERSION = "1.7.00"
 
 mcp = FastMCP(
     "Tweekit MCP Server - convert and/or optimize almost any file on-demand for any AI workflow or website from anywhere",
@@ -498,6 +498,50 @@ async def convert_url(
         bgColor=bgColor,
         fetchHeaders=fetchHeaders,
     )
+
+
+@mcp.tool()
+async def delete_document(
+    docId: Annotated[str, Field(description="The DocId returned from a prior upload to delete.")],
+    apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to the TWEEKIT_API_KEY environment variable when omitted.")] = None,
+    apiSecret: Annotated[Optional[str], Field(description="TweekIT API secret paired with the apiKey. Defaults to the TWEEKIT_API_SECRET environment variable when omitted.")] = None,
+) -> Dict[str, Any]:
+    """Immediately delete a document and all associated files by DocId.
+
+    Use this when an AI workflow needs to explicitly clean up an uploaded document
+    before its 20-minute auto-expiry — for example, when a user cancels mid-workflow.
+    This is only needed when using the REST API upload flow directly; the MCP
+    convert tools handle their own cleanup automatically.
+
+    Args:
+        docId: The document ID returned from a prior REST API upload call.
+        apiKey: TweekIT API key (`ApiKey` header). Falls back to `TWEEKIT_API_KEY` env var.
+        apiSecret: TweekIT API secret (`ApiSecret` header). Falls back to `TWEEKIT_API_SECRET` env var.
+
+    Returns:
+        A dict confirming deletion, or an error description.
+    """
+    try:
+        key, secret = _resolve_credentials(apiKey, apiSecret)
+    except RuntimeError as exc:
+        return {"error": str(exc)}
+
+    url = f"{BASE_URL}{docId}"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            response = await client.delete(url, headers={"ApiKey": key, "ApiSecret": secret})
+            response.raise_for_status()
+            try:
+                return response.json()
+            except Exception:
+                return {"message": "Document deleted successfully", "docId": docId}
+        except httpx.HTTPStatusError as e:
+            details = _extract_error_details(e.response)
+            return {"error": f"HTTP {e.response.status_code} deleting document", "details": details}
+        except httpx.RequestError as e:
+            return {"error": f"Network error: {e}"}
+        except Exception as e:
+            return {"error": f"Unexpected error: {e}"}
 
 
 @mcp.tool()
