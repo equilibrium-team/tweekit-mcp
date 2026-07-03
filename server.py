@@ -23,10 +23,7 @@ logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING
 
 SERVER_VERSION = "1.7.00"
 
-mcp = FastMCP(
-    "Tweekit MCP Server - convert and/or optimize almost any file on-demand for any AI workflow or website from anywhere",
-    stateless_http=True
-)
+mcp = FastMCP("TweekIT")
 
 # Remapping table so files with the alternate versions of known filename extensions aren't rejected.
 # (Though I think MediaRich already supports these, so I don't know why this is here....)
@@ -668,12 +665,17 @@ def main() -> None:
 
     rpc_kwargs = {}
     if args.transport == "streamable-http":
-        rpc_kwargs.update({"host": args.host, "port": args.port})
+        rpc_kwargs.update({
+            "host": args.host,
+            "port": args.port,
+            "stateless_http": True,
+        })
 
     try:
         asyncio.run(
             mcp.run_async(
                 transport=args.transport,
+                show_banner=False,
                 **rpc_kwargs,
             )
         )
