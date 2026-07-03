@@ -26,7 +26,7 @@ def test_doctype_endpoint(proxy_app):
     response = client.get(
         "/doctype",
         params={"ext": "pdf"},
-        headers={"Authorization": "Bearer test-key"},
+        headers={"Authorization": "Bearer test-key", "X-Api-Secret": "test-secret"},
     )
 
     assert response.status_code == 200
@@ -48,7 +48,7 @@ def test_convert_returns_json(proxy_app):
     response = client.post(
         "/convert",
         json=payload,
-        headers={"Authorization": "Bearer test-key"},
+        headers={"Authorization": "Bearer test-key", "X-Api-Secret": "test-secret"},
     )
 
     assert response.status_code == 200
@@ -75,7 +75,7 @@ def test_convert_returns_binary(proxy_app):
     response = client.post(
         "/convert",
         json=payload,
-        headers={"Authorization": "Bearer test-key"},
+        headers={"Authorization": "Bearer test-key", "X-Api-Secret": "test-secret"},
     )
 
     assert response.status_code == 200
@@ -87,7 +87,7 @@ def test_convert_returns_binary(proxy_app):
 def test_manifest_defaults(proxy_module):
     client = TestClient(proxy_module.app)
 
-    response = client.get("/.well-known/ai-plugin.json")
+    response = client.get("/mcp/.well-known/ai-plugin.json")
 
     assert response.status_code == 200
     manifest = response.json()
