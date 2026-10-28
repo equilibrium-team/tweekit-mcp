@@ -34,6 +34,8 @@ jobs:
         id: oidc_publish
         continue-on-error: true
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
       - name: Check fallback PyPI token
         if: steps.oidc_publish.outcome != 'success'
@@ -53,3 +55,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
