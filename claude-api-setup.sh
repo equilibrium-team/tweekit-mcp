@@ -353,7 +353,7 @@ cat > examples/web-converter/index.html << 'HTML_EOF'
                 const uint8Array = new Uint8Array(arrayBuffer);
                 const base64Data = btoa(uint8Array.reduce((data, byte) => data + String.fromCharCode(byte), ''));
 
-                const response = await fetch('https://api.tweekit.com/v1/convert', {
+                const response = await fetch('https://dapp.tweekit.io/tweekit/api/image/convert', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

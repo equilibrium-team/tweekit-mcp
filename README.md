@@ -1,10 +1,13 @@
-# TweekIT MCP Server
+<!-- mcp-name: io.github.equilibrium-team/tweekit -->
+<!-- mcp-name: io.github.equilibrium-team/tweekit-mcp -->
 
-*Ingest and Convert Just About Any Filetype Into AI Workflows*
+# TweekIT MCP Server & Python SDK
 
-Current version: v1.6.1
+*Ingest, Preflight, and Convert Just About Any Filetype Into AI Workflows — Official Open-Source Package by **AMPS dba Equilibrium***
 
-> **🤖 Claude Users**: Tired of "unsupported file type" errors? Jump to our [Claude File Format Enabler](#solving-claudes-file-type-limitations) – a browser-based tool that converts 450+ formats (DOC, XLS, PSD, DWG, etc.) into Claude-compatible files in seconds.
+Current version: v1.8.0
+
+> **🤖 Claude & AI Hub Users**: Tired of "unsupported file type" errors? Jump to our [Claude File Format Enabler](#solving-claudes-file-type-limitations) – a browser-based tool that converts 450+ formats (DOC, XLS, PSD, DWG, Camera RAW, etc.) into AI-compatible files in seconds, or use our built-in Python `preflight_check` and `TweekitClient` SDK directly in your pipeline.
 
 ## Overview
 
@@ -92,22 +95,66 @@ The entire process happens in seconds, and your workflow never sees an incompati
 
 ```bash
 # Using pip
-pip install tweekit-mcp
+pip install tweekit
 
 # Using uv
-uv pip install tweekit-mcp
+uv pip install tweekit
 
-# Using pipx (isolated environment)
-pipx install tweekit-mcp
+# Run directly as an MCP server with zero local setup via uvx
+uvx tweekit --transport stdio
+
+# Using pipx / uv tool (isolated CLI environment)
+uv tool install tweekit
 ```
 
-Run the MCP server locally:
+Run the MCP server locally (`tweekit` and `tweekit-mcp` CLIs are both installed):
 
 ```bash
 tweekit-mcp --transport streamable-http --port 8080
 ```
 
 The CLI wraps `server.py` and accepts the same flags (`--transport`, `--host`, `--port`).
+
+### Python SDK Quickstart (`tweekit` / `tweekit_mcp`)
+
+Installing `tweekit` from PyPI ships the full Python SDK (`import tweekit` or `import tweekit_mcp`) for both MCP client workflows and direct REST API integrations, plus the AI Hub preflight & modality router (powering **Maitrix AI Hub** multimodal file ingestion):
+
+```python
+import asyncio
+from pathlib import Path
+from tweekit import (
+    TweekitClient,
+    TweekitDirectClient,
+    preflight_check,
+)
+
+# 1. Instant local preflight & AI provider format recommendation (no network roundtrip)
+check = preflight_check("blueprint.dwg", target_provider="claude")
+print(check["supported"], check["category"], check["recommended_outfmt"])
+# -> True, 'design_vector_cad', 'png'
+
+# 2. Direct Async Python SDK (calls TweekIT API directly via httpx)
+async def run_direct():
+    async with TweekitDirectClient() as api:
+        result = await api.convert_file(
+            Path("presentation.ppt"),
+            outfmt="pdf",
+            output_path=Path("presentation_ai_ready.pdf"),
+        )
+        print("Saved:", result)
+
+# 3. Async MCP Client (connects to https://mcp.tweekit.io/mcp or local stdio server)
+async def run_mcp():
+    async with TweekitClient() as client:
+        tools = await client.list_tools()
+        batch_results = await client.batch_convert([
+            {"url": "https://example.com/scan.tiff", "outfmt": "png"},
+            {"path": "legacy_sheet.xls", "outfmt": "pdf"},
+        ])
+        print("Tools:", tools, "Batch:", len(batch_results))
+
+asyncio.run(run_direct())
+```
 
 ### Option 2: Clone the repository
 
@@ -212,17 +259,17 @@ The currently available resource name is 'version'. The currently available tool
 
 ### Versioning & Build Numbers
 
-The project tracks semantic versions in `major.minor.build` format, with the build component padded to two digits (for example, `1.6.01`). Use `scripts/bump_version.py` to keep every metadata file aligned:
+The project tracks semantic versions in `major.minor.build` format (for example, `1.8.0`). Use `scripts/bump_version.py` to keep every metadata file aligned:
 
 ```bash
-# Increment just the build number (e.g., 1.6.01 -> 1.6.02)
+# Increment just the build number (e.g., 1.8.0 -> 1.8.1)
 python scripts/bump_version.py --bump-build
 
-# Set an explicit version, resetting the build counter as needed
-python scripts/bump_version.py --set 1.7.00
+# Set an explicit version
+python scripts/bump_version.py --set 1.8.0
 ```
 
-The script updates `VERSION`, `pyproject.toml`, `server.py`, `server.json`, `README.md`, and `uv.lock` so container builds, manifests, and docs stay synchronized.
+The script updates `VERSION`, `pyproject.toml`, `server.py`, `server.json`, `claude/manifest.json`, `README.md`, and `uv.lock` so container builds, manifests, and docs stay synchronized.
 
 ### MCP Installation
 
@@ -272,13 +319,13 @@ bash scripts/deploy_cloud_run.sh local --version dev
 Deploy to staging (creates/updates the `tweekit-mcp-stage` service):
 
 ```bash
-bash scripts/deploy_cloud_run.sh stage --version 1.6.01
+bash scripts/deploy_cloud_run.sh stage --version 1.8.0
 ```
 
 Deploy to production (updates the `tweekit-mcp` service):
 
 ```bash
-bash scripts/deploy_cloud_run.sh prod --version 1.6.01
+bash scripts/deploy_cloud_run.sh prod --version 1.8.0
 ```
 
 Pass `--project <PROJECT_ID>` if you need to override the active `gcloud` configuration, and `--env-file <path>` to supply Cloud Run environment variables in YAML format.
@@ -564,7 +611,7 @@ Fetches the current version of the TweekIT API. Takes no parameters.
 #### /server-version
 
 Description:
-Returns this MCP server's version string (e.g., `1.6.01`). Takes no parameters.
+Returns this MCP server's version string (e.g., `1.8.0`). Takes no parameters.
 
 ### Tools
 

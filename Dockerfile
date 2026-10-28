@@ -1,11 +1,19 @@
 # Use the official Python image
 FROM python:3.13-slim
 
+LABEL io.modelcontextprotocol.server.name="io.github.equilibrium-team/tweekit"
+LABEL org.opencontainers.image.title="TweekIT MCP Server"
+LABEL org.opencontainers.image.description="Normalize, preflight, and convert 450+ file types for AI workflows via TweekIT MCP (AMPS dba Equilibrium)."
+LABEL org.opencontainers.image.vendor="AMPS dba Equilibrium"
+LABEL org.opencontainers.image.version="1.8.0"
+LABEL org.opencontainers.image.source="https://github.com/equilibrium-team/tweekit-mcp"
+LABEL org.opencontainers.image.licenses="MIT"
+
+# Refresh OS CA trust store (remediates Oct 2026 eMudhra intermediate CA compromise)
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && update-ca-certificates && rm -rf /var/lib/apt/lists/*
+
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
-
-# Install system dependencies
-#RUN apt-get update && apt-get install -y --no-install-recommends libexpat1 && rm -rf /var/lib/apt/lists/*
 
 # Install the project into /app
 COPY . /app

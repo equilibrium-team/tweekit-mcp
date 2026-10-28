@@ -4,6 +4,7 @@ import respx
 from httpx import Response
 
 import server
+from tests.conftest import tool_fn
 
 
 @pytest.mark.asyncio
@@ -21,7 +22,7 @@ async def test_fetch_html_returns_markdown():
         )
     )
 
-    result = await server.fetch.fn(url=url)
+    result = await tool_fn(server.fetch)(url=url)
 
     assert "error" not in result
     # Result should contain the text content
@@ -44,7 +45,7 @@ async def test_fetch_json_returns_raw():
         )
     )
 
-    result = await server.fetch.fn(url=url)
+    result = await tool_fn(server.fetch)(url=url)
     assert "error" not in result
 
 
@@ -55,7 +56,7 @@ async def test_fetch_404_returns_error():
     url = "https://example.com/missing"
     respx.get(url).mock(return_value=Response(404, content=b"Not Found"))
 
-    result = await server.fetch.fn(url=url)
+    result = await tool_fn(server.fetch)(url=url)
     assert "error" in result
     assert "404" in result["error"]
 
@@ -69,7 +70,7 @@ async def test_fetch_timeout():
     url = "https://slow.example.com/"
     respx.get(url).mock(side_effect=httpx.ReadTimeout("Timed out"))
 
-    result = await server.fetch.fn(url=url)
+    result = await tool_fn(server.fetch)(url=url)
     assert "error" in result
 
 
@@ -94,6 +95,6 @@ async def test_fetch_follows_redirects():
         )
     )
 
-    result = await server.fetch.fn(url=original_url)
+    result = await tool_fn(server.fetch)(url=original_url)
     # Should succeed with content from the final URL
     assert "error" not in result

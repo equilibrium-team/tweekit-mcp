@@ -94,3 +94,36 @@ def test_manifest_defaults(proxy_module):
     assert manifest["name_for_model"] == "tweekit"
     assert manifest["api"]["url"] == "https://plugin.test/openapi.json"
     assert manifest["logo_url"] == "https://plugin.test/logo.png"
+    assert "Content-Security-Policy" in response.headers
+
+
+def test_preflight_endpoint(proxy_app):
+    client = TestClient(proxy_app)
+    response = client.get("/preflight", params={"filename_or_ext": "scan.cr2", "target_provider": "claude"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["supported"] is True
+    assert body["category"] == "camera_raw"
+    assert body["recommended_outfmt"] == "png"
+    assert "Content-Security-Policy" in response.headers
+
+
+@respx.mock
+def test_convert_url_endpoint(proxy_app):
+    respx.get("https://files.example.com/sample.psd").mock(
+        return_value=Response(200, content=b"PSD_BINARY", headers={"content-type": "image/vnd.adobe.photoshop"})
+    )
+    respx.post("https://api.test/").mock(
+        return_value=Response(200, content=b"PNG_BINARY", headers={"content-type": "image/png"})
+    )
+    client = TestClient(proxy_app)
+    response = client.post(
+        "/convert-url",
+        json={"url": "https://files.example.com/sample.psd", "outfmt": "png"},
+        headers={"X-Api-Key": "test-key", "X-Api-Secret": "test-secret"},
+    )
+    assert response.status_code == 200
+    assert response.content == b"PNG_BINARY"
+    assert response.headers["content-type"] == "image/png"
+
+

@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "io.github.equilibrium-team/tweekit",
   "title": "TweekIT MCP Server",
-  "description": "Normalize and convert more than 400 file types via TweekIT's hosted MCP streamable HTTP endpoint.",
-  "version": "1.6.1",
+  "description": "Normalize, preflight, and convert more than 450 file types via TweekIT's hosted MCP streamable HTTP endpoint and Python SDK (AMPS dba Equilibrium).",
+  "version": "1.8.0",
   "websiteUrl": "https://www.tweekit.io/",
   "repository": {
     "source": "github",

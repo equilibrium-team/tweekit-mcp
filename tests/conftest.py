@@ -1,8 +1,19 @@
 import importlib
 import os
 from collections.abc import Generator
+from typing import Any, Callable
 
 import pytest
+
+
+def tool_fn(tool: Any) -> Callable:
+    """Return the underlying callable for an MCP tool, regardless of FastMCP version.
+
+    FastMCP 2.x wrapped tools in a Tool object exposing ``.fn``; FastMCP 3.x
+    returns the decorated function directly (still callable). This helper
+    handles both so tests aren't coupled to the FastMCP version.
+    """
+    return getattr(tool, "fn", tool)
 
 
 @pytest.fixture

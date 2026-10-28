@@ -12,7 +12,8 @@ from urllib.parse import quote_plus, urlparse
 import httpx
 from fastmcp import FastMCP
 from fastmcp.utilities.types import File, Image
-from typing import Any, Dict, List, Optional, Annotated
+from mcp.types import ToolAnnotations
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Annotated
 from pydantic import Field
 
 BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
@@ -21,9 +22,208 @@ BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING)
 
-SERVER_VERSION = "1.7.00"
+SERVER_VERSION = "1.8.0"
 
 mcp = FastMCP("TweekIT")
+
+# Comprehensive format taxonomy aligned with Maitrix AI Hub & TweekIT MediaRich engine.
+FORMAT_TAXONOMY: Dict[str, FrozenSet[str]] = {
+    "raster_image": frozenset({
+        "jpg", "jpeg", "jpe", "png", "webp", "gif", "bmp", "tiff", "tif",
+        "ico", "cur", "pcx", "tga", "pbm", "pgm", "ppm", "pnm", "sgi",
+        "rgb", "bw", "ras", "sun", "xbm", "xpm", "wbmp", "heic", "heif",
+        "avif", "jp2", "j2k", "jpx", "jxr", "wdp", "hdp", "exr", "hdr",
+        "dds", "iff", "lbm", "pct", "pic", "pict", "mac", "fpx", "sct",
+        "cut", "img", "rla", "rle", "sff", "dcx", "jb2", "jbig2",
+    }),
+    "design_vector_cad": frozenset({
+        "psd", "psb", "ai", "eps", "ps", "svg", "svgz", "cdr", "cmx",
+        "wmf", "emf", "cgm", "fig", "plt", "hpgl", "igs", "iges", "dwg",
+        "dxf", "dwf", "dgn", "stl", "obj", "3ds", "dae", "u3d",
+    }),
+    "camera_raw": frozenset({
+        "raw", "crw", "cr2", "cr3", "nef", "nrw", "arw", "srf", "sr2",
+        "dng", "orf", "rw2", "pef", "ptx", "raf", "x3f", "erf", "mef",
+        "mos", "mrw", "kdc", "dcr", "3fr", "fff", "iiq", "rwl", "srw",
+        "bay", "bmq", "cine", "cs1", "ia", "kc2", "mdc", "pxn", "qtk",
+        "rdc", "sti",
+    }),
+    "document": frozenset({
+        "pdf", "doc", "docx", "docm", "dot", "dotx", "dotm", "rtf", "txt",
+        "text", "md", "markdown", "odt", "ott", "fodt", "pages", "wpd",
+        "wp", "wp5", "wp6", "wps", "wri", "abw", "zabw", "lwp", "sam",
+        "sdw", "sxw", "vor", "hwp", "hwpx", "oxps", "xps", "djvu", "djv",
+        "tex", "latex", "man", "troff", "nroff",
+    }),
+    "spreadsheet": frozenset({
+        "xls", "xlsx", "xlsm", "xlsb", "xlt", "xltx", "xltm", "xlw",
+        "csv", "tsv", "ods", "ots", "fods", "numbers", "dif", "slk",
+        "sylk", "wk1", "wk3", "wk4", "wks", "123", "wb1", "wb2", "wb3",
+        "wq1", "wq2", "sdc", "sxc", "gnm", "gnumeric", "pxl",
+    }),
+    "presentation": frozenset({
+        "ppt", "pptx", "pptm", "pps", "ppsx", "ppsm", "pot", "potx",
+        "potm", "odp", "otp", "fodp", "key", "keynote", "sdd", "sdp",
+        "sxi", "shw",
+    }),
+    "diagram_publishing": frozenset({
+        "vsd", "vsdx", "vsdm", "vss", "vssx", "vst", "vstx", "pub",
+        "fm", "mif", "indd", "idml", "pmd", "qxp", "qxd", "sla", "scd",
+    }),
+    "ebook_help": frozenset({
+        "epub", "mobi", "azw", "azw3", "fb2", "lit", "pdb", "prc",
+        "lrf", "tcr", "chm", "hlp",
+    }),
+    "email_message": frozenset({
+        "eml", "msg", "mbox", "vcf", "ics",
+    }),
+    "web_code_data": frozenset({
+        "html", "htm", "xhtml", "mht", "mhtml", "xml", "xsl", "xslt",
+        "json", "yaml", "yml", "toml", "ini", "cfg", "conf", "log",
+        "sql", "py", "js", "ts", "jsx", "tsx", "java", "c", "cpp",
+        "h", "hpp", "cs", "go", "rs", "rb", "php", "swift", "kt",
+        "scala", "sh", "bash", "zsh", "ps1", "bat", "cmd", "css",
+        "scss", "less", "r", "m", "pl", "lua",
+    }),
+    "archive": frozenset({
+        "zip", "tar", "gz", "tgz", "bz2", "tbz2", "xz", "txz", "7z",
+        "rar", "cab", "iso", "jar", "war", "ear", "cpio", "ar", "z",
+        "lz", "lzma", "zst",
+    }),
+    "audio_video": frozenset({
+        "mp4", "m4v", "mov", "avi", "wmv", "flv", "mkv", "webm", "mpeg",
+        "mpg", "m2v", "3gp", "3g2", "ogv", "vob", "mts", "m2ts", "asf",
+        "rm", "rmvb", "swf", "mp3", "wav", "flac", "aac", "m4a", "ogg",
+        "oga", "opus", "wma", "aiff", "aif", "au", "snd", "mid", "midi",
+        "amr",
+    }),
+}
+
+EXTENSIVE_SUPPORTED_EXTENSIONS: FrozenSet[str] = frozenset().union(*FORMAT_TAXONOMY.values())
+
+AI_PROVIDER_PROFILES: Dict[str, Dict[str, Any]] = {
+    "claude": {
+        "display_name": "Anthropic Claude",
+        "native_extensions": frozenset({"png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md", "csv", "html", "json", "xml"}),
+        "image_target": "png",
+        "document_target": "pdf",
+        "fallback_target": "pdf",
+    },
+    "openai": {
+        "display_name": "OpenAI (GPT-4o / GPT-4.1 / o-series)",
+        "native_extensions": frozenset({"png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "md", "csv", "json"}),
+        "image_target": "png",
+        "document_target": "pdf",
+        "fallback_target": "pdf",
+    },
+    "gemini": {
+        "display_name": "Google Gemini",
+        "native_extensions": frozenset({"png", "jpg", "jpeg", "webp", "heic", "heif", "pdf", "txt", "md", "csv", "html", "json", "xml", "mp3", "wav", "mp4", "webm"}),
+        "image_target": "png",
+        "document_target": "pdf",
+        "fallback_target": "pdf",
+    },
+    "mistral": {
+        "display_name": "Mistral AI",
+        "native_extensions": frozenset({"png", "jpg", "jpeg", "webp", "pdf", "txt", "md", "csv", "json"}),
+        "image_target": "png",
+        "document_target": "pdf",
+        "fallback_target": "pdf",
+    },
+    "grok": {
+        "display_name": "xAI Grok",
+        "native_extensions": frozenset({"png", "jpg", "jpeg", "webp", "pdf", "txt", "md", "csv", "json"}),
+        "image_target": "png",
+        "document_target": "pdf",
+        "fallback_target": "pdf",
+    },
+    "deepseek": {
+        "display_name": "DeepSeek",
+        "native_extensions": frozenset({"png", "jpg", "jpeg", "txt", "md", "csv", "json"}),
+        "image_target": "png",
+        "document_target": "png",
+        "fallback_target": "png",
+    },
+    "openrouter": {
+        "display_name": "OpenRouter / Maitrix AI Hub",
+        "native_extensions": frozenset({"png", "jpg", "jpeg", "webp", "pdf", "txt", "md", "csv", "json"}),
+        "image_target": "png",
+        "document_target": "pdf",
+        "fallback_target": "pdf",
+    },
+    "default": {
+        "display_name": "Universal AI Ingestion Default",
+        "native_extensions": frozenset({"png", "jpg", "jpeg", "pdf", "txt"}),
+        "image_target": "png",
+        "document_target": "pdf",
+        "fallback_target": "pdf",
+    },
+}
+
+
+def _extract_extension_from_input(filename_or_ext: str) -> str:
+    """Extract and normalize a file extension from a filename, URL, path, or bare extension."""
+    cleaned = (filename_or_ext or "").strip()
+    if not cleaned:
+        return ""
+    if "://" in cleaned or "?" in cleaned or "#" in cleaned:
+        parsed_path = urlparse(cleaned).path
+        if parsed_path:
+            cleaned = parsed_path
+    if "." in cleaned and not cleaned.startswith("."):
+        suffix = Path(cleaned).suffix
+        if suffix:
+            return suffix.lstrip(".").lower()
+    return cleaned.lstrip(".").lower()
+
+
+def recommend_ai_format(filename_or_ext: str, target_provider: str = "default") -> Dict[str, Any]:
+    """Classify an input file/extension and recommend the optimal AI-ready output format."""
+    raw_ext = _extract_extension_from_input(filename_or_ext)
+    normalized_ext = _normalize_extension(raw_ext)
+    provider_key = (target_provider or "default").strip().lower()
+    profile = AI_PROVIDER_PROFILES.get(provider_key, AI_PROVIDER_PROFILES["default"])
+
+    category = "unknown"
+    for cat_name, ext_set in FORMAT_TAXONOMY.items():
+        if raw_ext in ext_set or normalized_ext in ext_set:
+            category = cat_name
+            break
+
+    is_supported = (raw_ext in EXTENSIVE_SUPPORTED_EXTENSIONS) or (normalized_ext in EXTENSIVE_SUPPORTED_EXTENSIONS)
+    native_supported = (raw_ext in profile["native_extensions"]) or (normalized_ext in profile["native_extensions"])
+
+    visual_categories = {"raster_image", "design_vector_cad", "camera_raw"}
+    if category in visual_categories:
+        recommended_outfmt = profile["image_target"]
+    elif category in {"document", "spreadsheet", "presentation", "diagram_publishing", "ebook_help", "email_message", "web_code_data"}:
+        recommended_outfmt = profile["document_target"]
+    else:
+        recommended_outfmt = profile["fallback_target"]
+
+    return {
+        "input": filename_or_ext,
+        "extension": raw_ext,
+        "normalized_extension": normalized_ext,
+        "supported": is_supported,
+        "category": category,
+        "target_provider": provider_key if provider_key in AI_PROVIDER_PROFILES else "default",
+        "provider_display_name": profile["display_name"],
+        "native_ai_supported": native_supported,
+        "needs_conversion": bool(is_supported and not native_supported),
+        "recommended_outfmt": recommended_outfmt,
+        "suggested_params": {
+            "inext": normalized_ext or raw_ext or "bin",
+            "outfmt": recommended_outfmt,
+            "noRasterize": recommended_outfmt == "pdf",
+            "alpha": recommended_outfmt in {"png", "webp"},
+        },
+    }
+
+
+def preflight_check(filename_or_ext: str, target_provider: str = "default") -> Dict[str, Any]:
+    """Alias for recommend_ai_format used for preflight validation in AI Hub workflows."""
+    return recommend_ai_format(filename_or_ext, target_provider=target_provider)
 
 # Remapping table so files with the alternate versions of known filename extensions aren't rejected.
 # (Though I think MediaRich already supports these, so I don't know why this is here....)
@@ -132,7 +332,15 @@ async def mcp_version() -> str:
     """Return the TweekIT MCP server version."""
     return SERVER_VERSION
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Inspect Supported Document Types",
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    )
+)
 async def doctype(
     apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to the TWEEKIT_API_KEY environment variable when omitted.")] = None,
     apiSecret: Annotated[Optional[str], Field(description="TweekIT API secret paired with the apiKey. Defaults to the TWEEKIT_API_SECRET environment variable when omitted.")] = None,
@@ -167,14 +375,37 @@ async def doctype(
                 return {"result": data}
 
         except httpx.HTTPStatusError as e:
-            print(f"HTTP error fetching supported file formats given '{extension}': {e}")
+            logger.warning("HTTP error fetching supported file formats given '%s': %s", extension, e)
             return {"error": f"Failed to fetch user data. Status: {e.response.status_code}"}
         except httpx.RequestError as e:
-            print(f"Network error fetching supported file formats given '{extension}': {e}")
+            logger.error("Network error fetching supported file formats given '%s': %s", extension, e)
             return {"error": f"Network error: {e}"}
         except Exception as e:
-            print(f"An unexpected error occurred: {e}")
+            logger.exception("An unexpected error occurred in doctype: %s", e)
             return {"error": f"An unexpected error occurred: {e}"}
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="AI Hub Preflight & Format Recommendation",
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    )
+)
+async def preflight(
+    filename_or_ext: Annotated[str, Field(description="Input filename, path, or extension to validate (e.g., 'scan.psd', 'report.xls', 'dwg').")],
+    target_provider: Annotated[str, Field(description="Target AI provider/hub profile ('claude', 'openai', 'gemini', 'mistral', 'grok', 'deepseek', 'openrouter', or 'default').")] = "default",
+) -> Dict[str, Any]:
+    """Validate whether a file format is supported by TweekIT and recommend the optimal AI-ready output format.
+
+    Designed for AI Hub preflight checks (such as Maitrix AI Hub, Claude, OpenAI, and Gemini pipelines)
+    to determine whether an incoming file needs TweekIT normalization and which output format (`pdf`, `png`,
+    `webp`, `txt`) and parameters to use.
+    """
+    return recommend_ai_format(filename_or_ext, target_provider=target_provider)
+
 
 async def _convert_impl(
     apiKey: str,
@@ -279,14 +510,22 @@ async def _convert_impl(
             logger.warning("TweekIT convert error (%s): %s", status, message or str(e))
             return error_payload
         except httpx.RequestError as e:
-            print(f"Network error fetching document from {url}: {e}")
+            logger.error("Network error fetching document from %s: %s", url, e)
             return {"error": "Network error"}
         except Exception as e:
-            print(f"An unexpected error occurred: {e}")
+            logger.exception("An unexpected error occurred in _convert_impl: %s", e)
             return {"error": f"An unexpected error occurred: {e}"}
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Convert Base64 Document",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    )
+)
 async def convert(
     inext: Annotated[str, Field(description="Input file extension (e.g., pdf, docx, png).")],
     outfmt: Annotated[str, Field(description="Requested output format to send as Fmt.")],
@@ -425,7 +664,15 @@ async def _convert_url_impl(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Convert Remote URL Document",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    )
+)
 async def convert_url(
     url: Annotated[str, Field(description="Direct download URL for the source document or image.")],
     outfmt: Annotated[str, Field(description="Requested output format to send as Fmt.")],
@@ -497,7 +744,108 @@ async def convert_url(
     )
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Convert Local File",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    )
+)
+async def convert_file(
+    file_path: Annotated[str, Field(description="Local filesystem path to the input document or image.")],
+    outfmt: Annotated[str, Field(description="Requested output format (e.g., pdf, png, webp, txt).")],
+    output_path: Annotated[Optional[str], Field(description="Optional local filesystem path to write the converted output directly to disk.")] = None,
+    apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to TWEEKIT_API_KEY when omitted.")] = None,
+    apiSecret: Annotated[Optional[str], Field(description="TweekIT API secret paired with the apiKey. Defaults to TWEEKIT_API_SECRET when omitted.")] = None,
+    inext: Annotated[Optional[str], Field(description="Override for the input file extension (inferred from file_path when omitted).")] = None,
+    noRasterize: Annotated[bool, Field(description="Forward to TweekIT to disable rasterization when supported.")] = False,
+    width: Annotated[int, Field(description="Optional pixel width for the converted output.")] = 0,
+    height: Annotated[int, Field(description="Optional pixel height for the converted output.")] = 0,
+    x1: Annotated[int, Field(description="Left crop coordinate in source pixels.")] = 0,
+    y1: Annotated[int, Field(description="Top crop coordinate in source pixels.")] = 0,
+    x2: Annotated[int, Field(description="Right crop coordinate in source pixels.")] = 0,
+    y2: Annotated[int, Field(description="Bottom crop coordinate in source pixels.")] = 0,
+    page: Annotated[int, Field(description="Page number to convert for multi-page inputs.")] = 1,
+    alpha: Annotated[bool, Field(description="Preserve alpha transparency when producing raster formats.")] = True,
+    bgColor: Annotated[str, Field(description="Background color (hex RGB) to composite behind transparent pixels.")] = "",
+) -> Any:
+    """Convert a local file on disk with TweekIT without base64-encoding into the LLM prompt context.
+
+    When `output_path` is provided and conversion returns binary media (`Image` or `File`),
+    the converted bytes are written directly to `output_path` and a compact JSON receipt is returned.
+    Otherwise, returns a FastMCP `Image` or `File` payload directly.
+    """
+    if os.getenv("TWEEKIT_ALLOW_LOCAL_FILES", "1").strip().lower() in {"0", "false", "no"}:
+        return {"error": "Local filesystem conversion is disabled on this server (TWEEKIT_ALLOW_LOCAL_FILES=0)."}
+
+    try:
+        key, secret = _resolve_credentials(apiKey, apiSecret)
+    except RuntimeError as exc:
+        return {"error": str(exc)}
+
+    src = Path(file_path).expanduser()
+    if not src.exists() or not src.is_file():
+        return {"error": f"Input file not found: '{file_path}'"}
+
+    try:
+        raw_bytes = src.read_bytes()
+    except Exception as exc:
+        return {"error": f"Failed to read input file '{file_path}': {exc}"}
+
+    if not raw_bytes:
+        return {"error": f"Input file '{file_path}' is empty."}
+
+    resolved_inext = _normalize_extension(inext or src.suffix) or "bin"
+    blob = base64.b64encode(raw_bytes).decode("ascii")
+
+    result = await _convert_impl(
+        apiKey=key,
+        apiSecret=secret,
+        inext=resolved_inext,
+        outfmt=outfmt,
+        blob=blob,
+        noRasterize=noRasterize,
+        width=width,
+        height=height,
+        x1=x1,
+        y1=y1,
+        x2=x2,
+        y2=y2,
+        page=page,
+        alpha=alpha,
+        bgColor=bgColor,
+    )
+
+    if output_path and isinstance(result, (Image, File)) and getattr(result, "data", None) is not None:
+        dest = Path(output_path).expanduser()
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(result.data)  # type: ignore[arg-type]
+            return {
+                "status": "ok",
+                "input_path": str(src.resolve()),
+                "output_path": str(dest.resolve()),
+                "input_extension": resolved_inext,
+                "output_format": getattr(result, "format", outfmt),
+                "size_bytes": len(result.data),  # type: ignore[arg-type]
+            }
+        except Exception as exc:
+            return {"error": f"Failed to write output file '{output_path}': {exc}"}
+
+    return result
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Delete Uploaded Document",
+        readOnlyHint=False,
+        destructiveHint=True,
+        idempotentHint=True,
+        openWorldHint=True,
+    )
+)
 async def delete_document(
     docId: Annotated[str, Field(description="The DocId returned from a prior upload to delete.")],
     apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to the TWEEKIT_API_KEY environment variable when omitted.")] = None,
@@ -541,7 +889,15 @@ async def delete_document(
             return {"error": f"Unexpected error: {e}"}
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Fetch & Normalize URL",
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    )
+)
 async def fetch(
     url: Annotated[str, Field(description="HTTP or HTTPS URL to retrieve and normalize.")],
 ) -> Any:
@@ -556,7 +912,7 @@ async def fetch(
         return {"error": "Unsupported URL scheme. Use http or https."}
 
     headers = {
-        "User-Agent": "tweekit-mcp/0.1 (+https://github.com/equilibrium-team/tweekit-mcp)"
+        "User-Agent": f"tweekit-mcp/{SERVER_VERSION} (+https://github.com/equilibrium-team/tweekit-mcp)"
     }
     try:
         async with httpx.AsyncClient(timeout=20.0, headers=headers, follow_redirects=True) as client:
@@ -586,7 +942,15 @@ async def fetch(
         return {"error": f"Unexpected error: {e}"}
 
 
-@mcp.tool()
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Web Search (DuckDuckGo)",
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    )
+)
 async def search(
     query: Annotated[str, Field(description="Search keywords to send to DuckDuckGo.")],
     max_results: Annotated[int, Field(description="Maximum number of results to return (1-10).")]=5,
@@ -599,7 +963,7 @@ async def search(
     q = quote_plus(query)
     url = f"https://html.duckduckgo.com/html/?q={q}"
     headers = {
-        "User-Agent": "tweekit-mcp/0.1 (+https://github.com/equilibrium-team/tweekit-mcp)",
+        "User-Agent": f"tweekit-mcp/{SERVER_VERSION} (+https://github.com/equilibrium-team/tweekit-mcp)",
         "Accept-Language": "en-US,en;q=0.9",
     }
     try:

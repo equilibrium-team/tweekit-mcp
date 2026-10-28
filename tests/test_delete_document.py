@@ -4,6 +4,7 @@ import respx
 from httpx import Response
 
 import server
+from tests.conftest import tool_fn
 
 
 @pytest.mark.asyncio
@@ -15,7 +16,7 @@ async def test_delete_document_success():
         return_value=Response(200, json={"message": "Deleted", "docId": doc_id})
     )
 
-    result = await server.delete_document.fn(
+    result = await tool_fn(server.delete_document)(
         docId=doc_id,
         apiKey="test-key",
         apiSecret="test-secret",
@@ -39,7 +40,7 @@ async def test_delete_document_not_found():
         return_value=Response(404, json={"error": "Not found"})
     )
 
-    result = await server.delete_document.fn(
+    result = await tool_fn(server.delete_document)(
         docId=doc_id,
         apiKey="test-key",
         apiSecret="test-secret",
@@ -57,7 +58,7 @@ async def test_delete_document_no_json_response():
         return_value=Response(200, content=b"OK")
     )
 
-    result = await server.delete_document.fn(
+    result = await tool_fn(server.delete_document)(
         docId=doc_id,
         apiKey="test-key",
         apiSecret="test-secret",
@@ -78,7 +79,7 @@ async def test_delete_document_network_error():
         side_effect=httpx.ConnectError("Connection refused")
     )
 
-    result = await server.delete_document.fn(
+    result = await tool_fn(server.delete_document)(
         docId=doc_id,
         apiKey="test-key",
         apiSecret="test-secret",
@@ -93,6 +94,6 @@ async def test_delete_document_missing_credentials(monkeypatch):
     monkeypatch.delenv("TWEEKIT_API_KEY", raising=False)
     monkeypatch.delenv("TWEEKIT_API_SECRET", raising=False)
 
-    result = await server.delete_document.fn(docId="some-id")
+    result = await tool_fn(server.delete_document)(docId="some-id")
 
     assert "error" in result
