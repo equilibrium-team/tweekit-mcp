@@ -5,6 +5,19 @@ All notable changes to the TweekIT MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-10-28
+
+### Added
+- **Official PyPI Package (`pip install tweekit`)**: Published under the approved **AMPS dba Equilibrium** PyPI organization (`Equilibrium/tweekit`), exposing both `tweekit` and `tweekit-mcp` CLI entry points plus `import tweekit` and `import tweekit_mcp` SDK namespaces.
+- **Full Async Python SDK (`TweekitClient` & `TweekitDirectClient`)**: Added direct async REST API conversion (`convert_bytes`, `convert_file`, `convert_url`), concurrent `batch_convert`, and MCP client wrappers.
+- **AI Hub Preflight & Modality Router (`preflight` tool & `preflight_check`)**: Added 450+ file-extension taxonomy (`FORMAT_TAXONOMY`) and provider-aware target format recommendations aligned with **Maitrix AI Hub**, Claude, OpenAI, Gemini, Mistral, Grok, and DeepSeek.
+- **Local File Conversion Tool (`convert_file`)**: Added opt-in (`TWEEKIT_ALLOW_LOCAL_FILES`) local path ingestion tool for trusted desktop/CLI workflows alongside MCP `ToolAnnotations` across all 8 tools (`doctype`, `preflight`, `convert`, `convert_url`, `convert_file`, `delete_document`, `fetch`, `search`).
+- **OpenAI / Plugin Proxy Enhancements (`plugin_proxy.py`)**: Added strict `Content-Security-Policy` headers, `GET /preflight`, `POST /convert-url`, and `DELETE /documents/{doc_id}` endpoints.
+- **ABI-Resilient Claude `.mcpb` Bundle (`scripts/build_claude_bundle.py`)**: Added pure-stdlib runtime ABI guard so Homebrew/OS minor Python version upgrades (e.g., Python 3.14 → 3.15) seamlessly delegate to matching interpreters or `uvx` without `pydantic_core` C-extension errors.
+
+### Security
+- **October 2026 eMudhra CA Trust-Store Remediation**: Pinned `certifi>=2026.10.19` (`2026.10.23`), refreshed container `ca-certificates` in `Dockerfile`, hardened PyPI GitHub Actions workflow (`publish-pypi.yml` with OIDC Trusted Publisher primary + token fallback), and standardized all domain references to Equilibrium's `tweekit.io`.
+
 ## [1.5.0] - 2025-11-06
 
 ### Added

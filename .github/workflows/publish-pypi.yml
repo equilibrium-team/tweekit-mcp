@@ -23,12 +23,36 @@ jobs:
 
       - name: Install build tooling
         run: |
-          python -m pip install --upgrade pip
-          pip install uv build
+          python -m pip install --upgrade "pip>=26.2.2" "certifi>=2026.10.19"
+          pip install "uv>=0.13.5"
 
       - name: Build distributions
         run: |
           uv build
 
-      - name: Publish to PyPI
+      - name: Publish to PyPI (OIDC Trusted Publisher - Primary)
+        id: oidc_publish
+        continue-on-error: true
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
+
+      - name: Check fallback PyPI token
+        if: steps.oidc_publish.outcome != 'success'
+        id: pypi_auth
+        env:
+          TOKEN_CANDIDATE: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -n "$TOKEN_CANDIDATE" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "OIDC Trusted Publisher failed and no PYPI_API_TOKEN fallback secret is set." >&2
+            exit 1
+          fi
+
+      - name: Publish to PyPI (API Token - Fallback)
+        if: steps.oidc_publish.outcome != 'success' && steps.pypi_auth.outputs.has_token == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true

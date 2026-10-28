@@ -14,7 +14,7 @@ This document explains how to run the FastAPI proxy, publish the ChatGPT plugin 
 | `TWEEKIT_API_KEY` | Default API key for proxy requests. | `abc123` |
 | `TWEEKIT_API_SECRET` | Default API secret for proxy requests. | `def456` |
 | `PLUGIN_PUBLIC_BASE_URL` | Public HTTPS origin hosting the proxy. | `https://mcp.tweekit.io/mcp` |
-| `PLUGIN_LOGO_URL` | Absolute URL for plugin logo. | `https://tweekit.com/assets/logo.png` |
+| `PLUGIN_LOGO_URL` | Absolute URL for plugin logo. | `https://www.tweekit.io/assets/logo.png` |
 
 > If you omit `TWEEKIT_API_KEY`/`SECRET`, each request must include either a `Bearer` token in `Authorization` or both `X-Api-Key` and `X-Api-Secret` headers.
 
@@ -71,7 +71,7 @@ All three endpoints must return HTTP 200 before publishing.
 2. Deploy the proxy:
    ```bash
    bash scripts/deploy_cloud_run.sh stage \
-     --version 1.6.01 \
+     --version 1.8.0 \
      --project tweekitmcp-a26b6 \
      --env-file stage.env \
      --command uv \

@@ -1,58 +1,70 @@
 [project]
-name = "tweekit-mcp"
-version = "1.6.1"
-description = "Official TweekIT Model Context Protocol server and plugin proxy."
+name = "tweekit"
+version = "1.8.0"
+description = "Official TweekIT Model Context Protocol (MCP) server, Python SDK, AI Hub preflight router, and REST plugin proxy by AMPS dba Equilibrium."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
 authors = [
-    { name = "Equilibrium Labs", email = "support@tweekit.com" },
+    { name = "AMPS dba Equilibrium", email = "support@tweekit.io" },
 ]
 maintainers = [
-    { name = "Equilibrium Labs", email = "support@tweekit.com" },
+    { name = "AMPS dba Equilibrium", email = "support@tweekit.io" },
 ]
-keywords = ["mcp", "tweekit", "fastmcp", "converter", "ai-tools"]
+keywords = ["mcp", "tweekit", "fastmcp", "converter", "ai-tools", "equilibrium", "mediarich", "maitrix"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Internet",
+    "Topic :: Multimedia :: Graphics :: Graphics Conversion",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "fastmcp>=2.12.0",
+    "certifi>=2026.10.19",
+    "fastmcp>=3.0.0",
     "httpx>=0.28.1",
     "fastapi>=0.115.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3",
-    "pytest-asyncio>=0.23",
-    "respx>=0.21",
+    "pytest>=9.0",
+    "pytest-asyncio>=1.0",
+    "respx>=0.22",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0",
+    "pytest-asyncio>=1.0",
+    "respx>=0.22",
 ]
 
 [project.urls]
 Homepage = "https://www.tweekit.io/"
+Organization = "https://www.equilibrium.com/"
 Documentation = "https://github.com/equilibrium-team/tweekit-mcp#readme"
 Source = "https://github.com/equilibrium-team/tweekit-mcp"
 Issues = "https://github.com/equilibrium-team/tweekit-mcp/issues"
 
 [project.scripts]
+tweekit = "server:main"
 tweekit-mcp = "server:main"
 
 [tool.setuptools]
 py-modules = ["server", "plugin_proxy"]
+packages = ["tweekit", "tweekit_mcp", "clients", "clients.python"]
 include-package-data = true
 
 [tool.setuptools.data-files]
 "share/tweekit_mcp" = ["server.json"]
-"share/tweekit_mcp/assets" = ["assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = [
@@ -62,3 +74,10 @@ asyncio_mode = "strict"
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+package = true

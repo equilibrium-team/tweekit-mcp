@@ -3,7 +3,7 @@
 Utility for keeping the TweekIT MCP version in sync across metadata files.
 
 Usage examples:
-  python scripts/bump_version.py --set 1.6.01
+  python scripts/bump_version.py --set 1.7.0
   python scripts/bump_version.py --bump-build
 """
 
@@ -22,6 +22,7 @@ TARGET_FILES = [
     REPO_ROOT / "pyproject.toml",
     REPO_ROOT / "server.py",
     REPO_ROOT / "server.json",
+    REPO_ROOT / "claude" / "manifest.json",
     REPO_ROOT / "README.md",
     REPO_ROOT / "uv.lock",
 ]
@@ -39,14 +40,14 @@ def detect_current_version() -> str:
 
 
 def format_build(major: int, minor: int, build: int) -> str:
-    """Ensure build portion always has two digits."""
-    return f"{major}.{minor}.{build:02d}"
+    """Return standard X.Y.Z semantic version string."""
+    return f"{major}.{minor}.{build}"
 
 
 def parse_version(version: str) -> tuple[int, int, int]:
     match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
     if not match:
-        raise ValueError(f"Version '{version}' must follow the pattern X.Y.ZZ")
+        raise ValueError(f"Version '{version}' must follow semantic versioning pattern X.Y.Z")
     major, minor, build = map(int, match.groups())
     return major, minor, build
 
@@ -59,13 +60,28 @@ def update_file(path: Path, old: str, new: str) -> bool:
     if not path.exists():
         return False
     text = path.read_text()
-    replacements = {
-        old: new,
-        f"v{old}": f"v{new}",
-    }
     updated = text
-    for needle, repl in replacements.items():
-        updated = updated.replace(needle, repl)
+
+    if path.name == "uv.lock":
+        # Targeted replace: only update tweekit-mcp's own version entry in the
+        # lock file. A naive str.replace on the whole file would corrupt unrelated
+        # package version strings that happen to share the same version number.
+        updated = re.sub(
+            r'(name\s*=\s*"tweekit(?:-mcp)?"[^\[]*?version\s*=\s*")[^"]+(")',
+            rf'\g<1>{new}\2',
+            updated,
+            flags=re.DOTALL,
+        )
+    elif path.name == "server.py":
+        updated = re.sub(r'SERVER_VERSION\s*=\s*"[^"]+"', f'SERVER_VERSION = "{new}"', updated)
+    else:
+        replacements = {
+            old: new,
+            f"v{old}": f"v{new}",
+        }
+        for needle, repl in replacements.items():
+            updated = updated.replace(needle, repl)
+
     if updated != text:
         path.write_text(updated)
         return True

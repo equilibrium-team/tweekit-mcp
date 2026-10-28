@@ -23,7 +23,7 @@ Cursor reads configuration from `~/.cursor/mcp.json`. Merge the snippet below (a
 Steps:
 1. Set `TWEEKIT_API_KEY`/`TWEEKIT_API_SECRET` in your shell or replace the placeholders with literal values.
 2. Restart Cursor; open the command palette and run “List tools” to confirm TweekIT endpoints are reachable.
-3. Optional: host the JSON at `https://tweekit.com/cursor-mcp.json` and surface an `<a href="cursor://add-mcp?config=...">Add to Cursor</a>` button.
+3. Optional: host the JSON at `https://www.tweekit.io/cursor-mcp.json` and surface an `<a href="cursor://add-mcp?config=...">Add to Cursor</a>` button.
 
 ## Continue (VS Code / JetBrains)
 Continue stores MCP servers in `~/.continue/config.json`. Add the following entry under the `mcpServers` key (see `configs/continue-mcp.json` for a ready-to-copy version).

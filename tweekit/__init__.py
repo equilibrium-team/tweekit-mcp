@@ -1,0 +1,28 @@
+"""Official TweekIT Python SDK & MCP Server by AMPS dba Equilibrium (`pip install tweekit`)."""
+
+from tweekit_mcp import (
+    AI_PROVIDER_PROFILES,
+    BASE_URL,
+    EXTENSIVE_SUPPORTED_EXTENSIONS,
+    FORMAT_TAXONOMY,
+    SERVER_VERSION,
+    TweekitClient,
+    TweekitDirectClient,
+    __all__,
+    __author__,
+    __version__,
+    convert,
+    convert_file,
+    convert_url,
+    delete_document,
+    doctype,
+    fetch,
+    main,
+    mcp,
+    mcp_version,
+    preflight,
+    preflight_check,
+    recommend_ai_format,
+    search,
+    version,
+)

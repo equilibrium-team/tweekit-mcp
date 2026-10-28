@@ -127,7 +127,7 @@ async def test_server():
                 print(f">>> ⚠️ Failed to call fetch tool: {e}")
 
         # Convert known sample documents to validate binary responses
-        sample_root = Path(__file__).resolve().parent.parent
+        sample_root = Path(__file__).resolve().parent
         sample_files = [
             {
                 "path": sample_root / "test.png",

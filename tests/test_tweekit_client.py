@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+import respx
 
 from clients.python import tweekit_client
 
@@ -106,3 +107,63 @@ def test_missing_credentials_raises(tmp_path, monkeypatch):
 
     with pytest.raises(RuntimeError):
         asyncio.run(runner())
+
+
+def test_tweekit_mcp_package_exports_and_batch_convert(tmp_path):
+    import tweekit_mcp
+
+    import tweekit
+    assert tweekit.__version__ == "1.8.0"
+    assert tweekit.TweekitClient is tweekit_mcp.TweekitClient
+    assert tweekit_mcp.__version__ == "1.8.0"
+    assert tweekit_mcp.__author__ == "AMPS dba Equilibrium"
+    assert "psd" in tweekit_mcp.EXTENSIVE_SUPPORTED_EXTENSIONS
+
+    doc = tmp_path / "sheet.xls"
+    doc.write_bytes(b"XLSDATA")
+
+    client = tweekit_mcp.TweekitClient(
+        server_url="https://mcp.test/mcp",
+        api_key="key",
+        api_secret="secret",
+    )
+
+    async def runner():
+        async with client:
+            dt = await client.doctype("pdf")
+            pf = await client.preflight("photo.cr2", target_provider="claude")
+            batch = await client.batch_convert([
+                {"path": doc, "outfmt": "pdf"},
+                {"url": "https://example.com/scan.tif", "outfmt": "png"},
+                {"data": b"RAWBYTES", "inext": "bmp", "outfmt": "webp"},
+            ])
+            del_res = await client.delete_document("doc-123")
+            calls = list(client._client.calls)
+        return dt, pf, batch, del_res, calls
+
+    dt, pf, batch, del_res, calls = asyncio.run(runner())
+    assert dt["tool"] == "doctype"
+    assert pf["tool"] == "preflight"
+    assert len(batch) == 3
+    assert del_res["tool"] == "delete_document"
+    assert calls[0] == ("doctype", {"extension": "pdf", "apiKey": "key", "apiSecret": "secret"})
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_tweekit_direct_client():
+    import respx
+    from httpx import Response
+    import server
+    from tweekit_mcp import TweekitDirectClient
+
+    respx.post(server.BASE_URL).mock(
+        return_value=Response(200, json={"status": "converted_direct"})
+    )
+
+    async with TweekitDirectClient(api_key="k", api_secret="s") as api:
+        info = api.preflight("deck.pptx", target_provider="claude")
+        assert info["recommended_outfmt"] == "pdf"
+        res = await api.convert_bytes(b"PPTXDATA", inext="pptx", outfmt="pdf")
+        assert res == {"status": "converted_direct"}
+

@@ -11,7 +11,7 @@
     },
     "tweekit-staging": {
       "type": "streamable-http",
-      "url": "https://mcp.stage.tweekit.com/mcp",
+      "url": "https://mcp.stage.tweekit.io/mcp",
       "note": "Update to match the staged endpoint when available.",
       "headers": {
         "ApiKey": "<YOUR_TWEEKIT_API_KEY>",

@@ -10,12 +10,6 @@ def test_build_bundle_overrides(tmp_path, monkeypatch):
     # Mock _vendor_dependencies to prevent downloading files over network
     monkeypatch.setattr(scripts.build_claude_bundle, "_vendor_dependencies", lambda target_dir: target_dir.mkdir(parents=True, exist_ok=True))
 
-    # Mock _stage_server_files to just write a dummy file
-    def mock_stage_server_files(server_dir):
-        server_dir.mkdir(parents=True, exist_ok=True)
-        (server_dir / "server.py").write_text("# dummy")
-    monkeypatch.setattr(scripts.build_claude_bundle, "_stage_server_files", mock_stage_server_files)
-
     manifest_path = Path("claude/manifest.json")
     output_path = tmp_path / "tweekit.mcpb"
 
@@ -30,4 +24,6 @@ def test_build_bundle_overrides(tmp_path, monkeypatch):
     with ZipFile(bundle_path, "r") as bundle:
         manifest = json.loads(bundle.read("manifest.json"))
         assert manifest["version"] == "2.0.0"
+        assert manifest["server"]["entry_point"] == "server/server.py"
         assert "server/server.py" in bundle.namelist()
+        assert "server/tweekit_server.py" in bundle.namelist()
