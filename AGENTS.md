@@ -32,6 +32,7 @@
 - After deploying to Firebase Hosting, point `test_server.py --base-url https://<PROJECT_ID>.web.app/mcp` and rerun.
 
 ## Commit & Pull Request Guidelines
+- **Git Identity Compliance (Mandatory)**: This is an `equilibrium-team` / `Devel` repository — ALWAYS commit and tag as `equilibrium-eq <gitadmin-eq@equilibrium.com>` (never override `user.name`/`user.email` to `cpucoinio`, which is strictly for `../strata-flow`, and never bypass `~/.git-hooks/pre-commit` with `GIT_CONFIG_GLOBAL=/dev/null`).
 - Subjects: concise, present tense (~72 chars). Group related changes; call out environment or deploy impacts in bodies.
 - Include executed commands (`uv run python test_server.py`, `pytest`, deploy scripts) and attach logs/screenshots for behavior changes.
 - Keep diffs focused; avoid unrelated refactors or vendored churn unless accompanied by updated wheels/reports.

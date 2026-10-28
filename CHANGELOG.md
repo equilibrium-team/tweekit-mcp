@@ -18,6 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 - **October 2026 eMudhra CA Trust-Store Remediation**: Pinned `certifi>=2026.10.19` (`2026.10.23`), refreshed container `ca-certificates` in `Dockerfile`, hardened PyPI GitHub Actions workflow (`publish-pypi.yml` with OIDC Trusted Publisher primary + token fallback), and standardized all domain references to Equilibrium's `tweekit.io`.
 
+## [1.7.0] - 2026-05-22
+
+### Added
+- **Document Cleanup Tool (`delete_document`)**: Added explicit document deletion by `DocId` (`DELETE /api/image/{doc_id}`) with unit and E2E test coverage.
+- **Comprehensive End-to-End Test Runner (`scripts/run_full_e2e_test.py`)**: Added multi-format ingestion, conversion, and output verification test harness.
+- **OpenAI Codex CLI & MCP Directory Guides**: Added `configs/codex-mcp.yaml`, `docs/mcp-directories.md`, and updated developer tool and submission checklists.
+- **Python 3.14 & Credential Resolution Improvements**: Added `tests/test_credential_resolution.py`, `tests/test_fetch_tool.py`, FastMCP `stateless_http` startup optimization, and pytest-asyncio strict compatibility.
+
+## [1.6.1] - 2025-11-23
+
+### Added
+- **Claude Desktop `.mcpb` Bundle & CI (`scripts/build_claude_bundle.py`, `build-claude-bundle.yml`)**: Automated building and `@anthropic-ai/mcpb` validation of standalone Claude Desktop extension bundles with embedded branding assets.
+- **OpenAI / ChatGPT REST Plugin Proxy (`plugin_proxy.py`)**: Added FastAPI REST proxy running alongside the MCP server in Docker/Cloud Run, serving `/logo.png`, guarded `/assets/{name}` static branding routes, and OpenAPI schema generation.
+- **Cloud Run Staging & Production Deployment Automation (`scripts/deploy_cloud_run.sh`)**: Unified container deployment for both MCP streamable HTTP and plugin proxy services across `stage` and `prod` targets, plus stateless Firebase Hosting FastMCP configuration.
+- **Recursive E2E Asset Sweep (`scripts/run_mcp_e2e.py`)**: Added directory-tree conversion sweep preserving nested output structure and error/skip audit markers.
+
 ## [1.5.0] - 2025-11-06
 
 ### Added
