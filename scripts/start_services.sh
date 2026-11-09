@@ -15,12 +15,12 @@ fi
 
 trap 'kill 0 2>/dev/null || true' EXIT
 
-# Run the user-facing plugin proxy on the main port Cloud Run expects.
+# Run the user-facing plugin proxy on the main port Cloud Run expects, honoring X-Forwarded-Proto.
 echo "Starting Plugin Proxy on port ${MAIN_PORT}"
-uv run uvicorn plugin_proxy:app --host 0.0.0.0 --port "${MAIN_PORT}" &
+uv run uvicorn plugin_proxy:app --host 0.0.0.0 --port "${MAIN_PORT}" --proxy-headers --forwarded-allow-ips="*" &
 
 # Run the internal MCP server on the secondary port.
 echo "Starting MCP Server on port ${MCP_SERVER_PORT}"
-PORT="${MCP_SERVER_PORT}" uv run server.py &
+HOST=0.0.0.0 PORT="${MCP_SERVER_PORT}" uv run server.py &
 
 wait -n

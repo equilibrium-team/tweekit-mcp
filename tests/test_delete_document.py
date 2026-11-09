@@ -9,23 +9,20 @@ from tests.conftest import tool_fn
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_delete_document_success():
-    """Successful deletion returns confirmation."""
+async def test_delete_document_success(monkeypatch):
+    """Successful deletion returns confirmation using env/header credentials."""
+    monkeypatch.setenv("TWEEKIT_API_KEY", "test-key")
+    monkeypatch.setenv("TWEEKIT_API_SECRET", "test-secret")
     doc_id = "abc-123"
     route = respx.delete(f"{server.BASE_URL}{doc_id}").mock(
         return_value=Response(200, json={"message": "Deleted", "docId": doc_id})
     )
 
-    result = await tool_fn(server.delete_document)(
-        docId=doc_id,
-        apiKey="test-key",
-        apiSecret="test-secret",
-    )
+    result = await tool_fn(server.delete_document)(docId=doc_id)
 
     assert route.called
     assert result["docId"] == doc_id
     assert "error" not in result
-    # Verify auth headers were sent
     req = route.calls[0].request
     assert req.headers["apikey"] == "test-key"
     assert req.headers["apisecret"] == "test-secret"
@@ -33,36 +30,32 @@ async def test_delete_document_success():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_delete_document_not_found():
+async def test_delete_document_not_found(monkeypatch):
     """404 returns an error dict instead of raising."""
+    monkeypatch.setenv("TWEEKIT_API_KEY", "test-key")
+    monkeypatch.setenv("TWEEKIT_API_SECRET", "test-secret")
     doc_id = "nonexistent-999"
     respx.delete(f"{server.BASE_URL}{doc_id}").mock(
         return_value=Response(404, json={"error": "Not found"})
     )
 
-    result = await tool_fn(server.delete_document)(
-        docId=doc_id,
-        apiKey="test-key",
-        apiSecret="test-secret",
-    )
+    result = await tool_fn(server.delete_document)(docId=doc_id)
 
     assert "error" in result
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_delete_document_no_json_response():
+async def test_delete_document_no_json_response(monkeypatch):
     """Server returns 200 with no JSON body — should still succeed."""
+    monkeypatch.setenv("TWEEKIT_API_KEY", "test-key")
+    monkeypatch.setenv("TWEEKIT_API_SECRET", "test-secret")
     doc_id = "plain-text-response"
     respx.delete(f"{server.BASE_URL}{doc_id}").mock(
         return_value=Response(200, content=b"OK")
     )
 
-    result = await tool_fn(server.delete_document)(
-        docId=doc_id,
-        apiKey="test-key",
-        apiSecret="test-secret",
-    )
+    result = await tool_fn(server.delete_document)(docId=doc_id)
 
     assert result["docId"] == doc_id
     assert result["message"] == "Document deleted successfully"
@@ -70,20 +63,18 @@ async def test_delete_document_no_json_response():
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_delete_document_network_error():
+async def test_delete_document_network_error(monkeypatch):
     """Network failure returns an error dict."""
     import httpx
 
+    monkeypatch.setenv("TWEEKIT_API_KEY", "test-key")
+    monkeypatch.setenv("TWEEKIT_API_SECRET", "test-secret")
     doc_id = "network-fail"
     respx.delete(f"{server.BASE_URL}{doc_id}").mock(
         side_effect=httpx.ConnectError("Connection refused")
     )
 
-    result = await tool_fn(server.delete_document)(
-        docId=doc_id,
-        apiKey="test-key",
-        apiSecret="test-secret",
-    )
+    result = await tool_fn(server.delete_document)(docId=doc_id)
 
     assert "error" in result
 

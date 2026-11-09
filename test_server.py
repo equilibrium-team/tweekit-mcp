@@ -1,214 +1,154 @@
+import argparse
 import asyncio
+import base64
+import json
 import os
 import re
-import json
-import base64
 from pathlib import Path
 
+import httpx
 from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
 
-# Test the MCP server using streamable-http transport.
-# Use "/sse" endpoint if using sse transport.
 
-MCP_URL = os.environ.get("TWEEKIT_MCP_BASE_URL", "https://mcp.tweekit.io/mcp")
-API_KEY = (
-    os.environ.get("TWEEKIT_API_KEY")
-    or os.environ.get("TWEEKIT_APIKEY")
-)
-API_SECRET = (
-    os.environ.get("TWEEKIT_API_SECRET")
-    or os.environ.get("TWEEKIT_APISECRET")
-)
+def _parse_cli() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Smoke-test a TweekIT MCP Streamable HTTP endpoint.")
+    parser.add_argument(
+        "--base-url",
+        default=os.environ.get("TWEEKIT_MCP_BASE_URL", "https://mcp.tweekit.io/mcp"),
+        help="Target MCP Streamable HTTP endpoint URL.",
+    )
+    return parser.parse_args()
 
-async def test_server():
 
-    if not API_KEY or not API_SECRET:
-        raise RuntimeError(
-            "TWEEKIT_API_KEY/TWEEKIT_API_SECRET env vars are required for smoke tests."
+async def test_server(base_url: str | None = None) -> None:
+    mcp_url = (base_url or os.environ.get("TWEEKIT_MCP_BASE_URL", "https://mcp.tweekit.io/mcp")).rstrip("/")
+    api_key = os.environ.get("TWEEKIT_API_KEY") or os.environ.get("TWEEKIT_APIKEY")
+    api_secret = os.environ.get("TWEEKIT_API_SECRET") or os.environ.get("TWEEKIT_APISECRET")
+
+    if not api_key or not api_secret:
+        raise RuntimeError("TWEEKIT_API_KEY/TWEEKIT_API_SECRET env vars are required for smoke tests.")
+
+    # Verify trailing-slash `/mcp/` does NOT emit a 307 redirect or downgrade to http://
+    slash_url = f"{mcp_url}/"
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as raw_http:
+        init_resp = await raw_http.post(
+            slash_url,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+                "ApiKey": api_key,
+                "ApiSecret": api_secret,
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {},
+                    "clientInfo": {"name": "tweekit-smoke-probe", "version": "1.8.1"},
+                },
+            },
         )
+        assert init_resp.status_code == 200, (
+            f"Expected 200 OK on trailing-slash {slash_url}, got {init_resp.status_code} "
+            f"(Location: {init_resp.headers.get('location')})"
+        )
+        print(f">>> Trailing-slash initialize {slash_url} returned 200 OK (no redirect).")
 
-    async with Client(MCP_URL) as client:
-        # List available resources
+    transport = StreamableHttpTransport(
+        mcp_url,
+        headers={"ApiKey": api_key, "ApiSecret": api_secret},
+    )
+    async with Client(transport) as client:
         resources = await client.list_resources()
         for resource in resources:
-            print(f">>> 📦  Resource found: {resource.name}")
+            print(f">>> Resource found: {resource.name}")
 
-        # List available tools
         tools = await client.list_tools()
         for tool in tools:
-            print(f">>> 🛠️  Tool found: {tool.name}")
+            print(f">>> Tool found: {tool.name}")
+            schema_props = (tool.inputSchema or {}).get("properties", {})
+            assert "apiKey" not in schema_props and "apiSecret" not in schema_props, (
+                f"Tool {tool.name} still exposes credential parameters in inputSchema!"
+            )
         tool_names = {t.name for t in tools}
 
         passed_checks = set()
-        required_checks = {"version", "mcp_version", "doctype"}
+        required_checks = {"version", "mcp_version", "doctype", "preflight"}
 
-        # Call the version resource (no parameters)
-        try:
-            version = await client.read_resource("config://tweekit-version")
+        version = await client.read_resource("config://tweekit-version")
+        content = version[0] if isinstance(version, (list, tuple)) and version else version
+        ver_str = str(getattr(content, "text", content))
+        print(f">>> TweekIT API version: {ver_str}")
+        assert re.match(r"^\d+\.\d+\.\d+\.\d+$", ver_str), f"Unexpected version format: {ver_str!r}."
+        passed_checks.add("version")
 
-            # Normalize the returned value to a string.
-            content = version[0] if isinstance(version, (list, tuple)) and version else version
-            ver_str = getattr(content, "text", content)
-            ver_str = str(ver_str)
+        mcp_version = await client.read_resource("config://tweekit-mcp-version")
+        content = mcp_version[0] if isinstance(mcp_version, (list, tuple)) and mcp_version else mcp_version
+        mcp_ver_str = str(getattr(content, "text", content))
+        print(f">>> TweekIT MCP server version: {mcp_ver_str}")
+        assert re.match(r"^\d+\.\d+\.\d+$", mcp_ver_str), f"Unexpected MCP version format: {mcp_ver_str!r}."
+        passed_checks.add("mcp_version")
 
-            print(f">>> 🔖 TweekIT API version: {ver_str}")
-            # Assert the version matches the pattern ^\d+\.\d+\.\d+\.\d+$
-            assert re.match(r"^\d+\.\d+\.\d+\.\d+$", ver_str), f"Unexpected version format: {ver_str!r}."
-            passed_checks.add("version")
-        except Exception as e:
-            print(f">>> ⚠️ Failed to call version resource: {e}")
+        preflight = await client.call_tool("preflight", {"filename_or_ext": "blueprint.dwg", "target_provider": "claude"})
+        pf_data = preflight.data if hasattr(preflight, "data") and preflight.data else preflight.structured_content
+        assert isinstance(pf_data, dict) and pf_data.get("recommended_outfmt") == "png"
+        passed_checks.add("preflight")
 
-        # Call the MCP server version resource
-        try:
-            mcp_version = await client.read_resource("config://tweekit-mcp-version")
+        doctype = await client.call_tool("doctype", {"extension": "*"})
+        json.loads(json.dumps(doctype.data))
+        print(">>> Doctype tool response is valid JSON")
+        passed_checks.add("doctype")
 
-            content = mcp_version[0] if isinstance(mcp_version, (list, tuple)) and mcp_version else mcp_version
-            ver_str = getattr(content, "text", content)
-            ver_str = str(ver_str)
-
-            print(f">>> 🔖 TweekIT MCP server version: {ver_str}")
-            assert re.match(r"^\d+\.\d+\.\d+$", ver_str), f"Unexpected MCP version format: {ver_str!r}."
-            passed_checks.add("mcp_version")
-        except Exception as e:
-            print(f">>> ⚠️ Failed to call MCP version resource: {e}")
-
-        # Call the doctype tool with parameters, including apikey and apisecret from environment variables
-        try:
-            params = {
-                "apiKey": API_KEY,
-                "apiSecret": API_SECRET,
-                "extension": "*"
-            }
-            doctype = await client.call_tool("doctype", params)
-            try:
-                json.loads(json.dumps(doctype.data))  # Ensure the response is valid JSON
-                print(f">>> ✅ Doctype tool response is valid JSON")
-                passed_checks.add("doctype")
-            except json.JSONDecodeError:
-                assert False, f">>> ⚠️ Doctype tool response is not valid JSON."
-        except Exception as e:
-            print(f">>> ⚠️ Failed to call doctype tool: {e}")
-
-        # Optional: Call the search tool if present
-        if "search" in tool_names:
-            required_checks.add("search")
-            try:
-                params = {"query": "tweekit site:tweekit.io", "max_results": 3}
-                result = await client.call_tool("search", params)
-                data = result.data if hasattr(result, "data") else result
-                if isinstance(data, dict) and "results" in data:
-                    print(f">>> ✅ Search tool returned {len(data['results'])} results")
-                    passed_checks.add("search")
-                else:
-                    print(f">>> ⚠️ Search tool returned unexpected payload: {data}")
-            except Exception as e:
-                print(f">>> ⚠️ Failed to call search tool: {e}")
-
-        # Optional: Call the fetch tool if present
         if "fetch" in tool_names:
             required_checks.add("fetch")
-            try:
-                params = {"url": "https://example.com"}
-                result = await client.call_tool("fetch", params)
-                # fetch may return File/Image or JSON; accept any non-error
-                if result.content:
-                    print(f">>> ✅ Fetch tool returned binary content")
-                    passed_checks.add("fetch")
-                else:
-                    data = result.data if hasattr(result, "data") else result
-                    if isinstance(data, dict) and ("text" in data or "status" in data):
-                        print(f">>> ✅ Fetch tool returned text content: status={data.get('status')}")
-                        passed_checks.add("fetch")
-                    elif isinstance(data, dict) and "error" in data:
-                        print(f">>> ⚠️ Fetch tool error: {data['error']}")
-                    else:
-                        print(f">>> ⚠️ Fetch tool unexpected response: {data}")
-            except Exception as e:
-                print(f">>> ⚠️ Failed to call fetch tool: {e}")
+            result = await client.call_tool("fetch", {"url": "https://example.com"})
+            data = result.data if hasattr(result, "data") else result
+            if result.content or (isinstance(data, dict) and ("text" in data or "status" in data)):
+                passed_checks.add("fetch")
 
-        # Convert known sample documents to validate binary responses
-        sample_root = Path(__file__).resolve().parent
-        sample_files = [
-            {
-                "path": sample_root / "test.png",
-                "inext": "png",
-                "outfmt": "webp",
-                "noRasterize": False,
-            },
-            {
-                "path": sample_root / "test.docx",
-                "inext": "docx",
-                "outfmt": "pdf",
-                "noRasterize": True,
-            },
+        repo_root = Path(__file__).resolve().parent
+        smoke_inputs = [
+            {"path": repo_root / "test.png", "inext": "png", "outfmt": "webp", "noRasterize": False},
+            {"path": repo_root / "test.docx", "inext": "docx", "outfmt": "pdf", "noRasterize": True},
         ]
 
-        for sample in sample_files:
-            path = sample["path"]
+        for entry in smoke_inputs:
+            path = entry["path"]
             if not path.exists():
-                print(f">>> ⚠️ Sample file missing: {path}")
                 continue
-
             required_checks.add(f"convert:{path.name}")
-
             encoded_string = base64.b64encode(path.read_bytes()).decode("utf-8")
-            params = {
-                "apiKey": API_KEY,
-                "apiSecret": API_SECRET,
-                "blob": encoded_string,
-                "inext": sample["inext"],
-                "outfmt": sample["outfmt"],
-                "noRasterize": sample["noRasterize"],
-            }
-
-            print(f">>> 🔖 Calling convert tool for {path.name}.")
-            convert = await client.call_tool("convert", params)
-            if convert.content:
-                content = convert.content
-                part = content[0]
-                if part.type in {"resource", "image"}:
-                    print(f">>> ✅ Convert tool for {path.name} returned {part.type}.")
-                    passed_checks.add(f"convert:{path.name}")
-                elif part.type == "text":
-                    print(f">>> ⚠️ Convert tool rejected request: {part.text}")
-                else:
-                    assert False, f">>> ⚠️ Unexpected content type for {path.name}: {part.type!r}"
-            elif convert.data and "error" in convert.data:
-                print(f">>> ⚠️ Convert tool returned an error for {path.name}: {convert.data['error']}")
-            else:
-                assert False, f">>> ⚠️ Convert tool for {path.name} returned an unexpected response: data={convert.data}, content={convert.content}"
+            convert = await client.call_tool(
+                "convert",
+                {
+                    "blob": encoded_string,
+                    "inext": entry["inext"],
+                    "outfmt": entry["outfmt"],
+                    "noRasterize": entry["noRasterize"],
+                },
+            )
+            if convert.content and convert.content[0].type in {"resource", "image"}:
+                print(f">>> Convert tool for {path.name} returned {convert.content[0].type}.")
+                passed_checks.add(f"convert:{path.name}")
 
         if "convert_url" in tool_names:
             required_checks.add("convert_url")
             remote_url = "https://raw.githubusercontent.com/equilibrium-team/tweekit-mcp/main/test.png"
-            try:
-                params = {
-                    "apiKey": API_KEY,
-                    "apiSecret": API_SECRET,
-                    "url": remote_url,
-                    "outfmt": "webp",
-                }
-                result = await client.call_tool("convert_url", params)
-                if result.content:
-                    part = result.content[0]
-                    if part.type in {"resource", "image"}:
-                        print(f">>> ✅ convert_url returned {part.type} for remote asset.")
-                        passed_checks.add("convert_url")
-                    else:
-                        print(f">>> ⚠️ convert_url unexpected content type: {part.type}")
-                elif result.data and "error" in result.data:
-                    print(f">>> ⚠️ convert_url returned error: {result.data['error']}")
-                else:
-                    print(f">>> ⚠️ convert_url unexpected response: data={result.data}, content={result.content}")
-            except Exception as e:
-                print(f">>> ⚠️ Failed to call convert_url tool: {e}")
+            result = await client.call_tool("convert_url", {"url": remote_url, "outfmt": "webp"})
+            if result.content and result.content[0].type in {"resource", "image"}:
+                print(f">>> convert_url returned {result.content[0].type} for remote asset.")
+                passed_checks.add("convert_url")
 
         missing_checks = sorted(required_checks - passed_checks)
         if missing_checks:
-            print(f"FAILED: missing checks -> {missing_checks}")
             raise AssertionError(f"Smoke tests incomplete: {missing_checks}")
 
         print("PASSED")
 
+
 if __name__ == "__main__":
-    asyncio.run(test_server())
+    cli_args = _parse_cli()
+    asyncio.run(test_server(cli_args.base_url))

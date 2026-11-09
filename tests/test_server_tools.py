@@ -6,6 +6,7 @@ import respx
 from httpx import Response
 
 import server
+from tests.conftest import tool_fn
 
 
 @pytest.mark.asyncio
@@ -29,6 +30,7 @@ async def test_convert_url_infers_extension_and_calls_convert():
         width=128,
         height=256,
         fetchHeaders={"Authorization": "Bearer token"},
+        allow_auth_headers=True,
     )
 
     assert result == {"status": "ok"}
@@ -67,7 +69,7 @@ async def test_convert_url_respects_inext_override():
     assert sent_json["DocDataType"] == "pdf"
 
 
-def test_all_tools_expose_mcp_annotations():
+def test_all_tools_expose_mcp_annotations_and_hide_credentials():
     expected_tools = {
         "doctype": (True, False),
         "preflight": (True, False),
@@ -83,13 +85,19 @@ def test_all_tools_expose_mcp_annotations():
         return await server.mcp.list_tools()
 
     import asyncio
+
     tools = {t.name: t for t in asyncio.run(_get_tools())}
     for tool_name, (readonly, destructive) in expected_tools.items():
         assert tool_name in tools, f"Missing tool {tool_name}"
-        annotations = tools[tool_name].annotations
+        tool = tools[tool_name]
+        annotations = tool.annotations
         assert annotations is not None, f"Tool {tool_name} is missing annotations"
         assert annotations.readOnlyHint is readonly
         assert annotations.destructiveHint is destructive
+        props = getattr(tool, "parameters", {}) or {}
+        schema_props = props.get("properties", {}) if isinstance(props, dict) else {}
+        assert "apiKey" not in schema_props, f"Tool {tool_name} leaked apiKey in schema"
+        assert "apiSecret" not in schema_props, f"Tool {tool_name} leaked apiSecret in schema"
 
 
 def test_preflight_recommendations():
@@ -117,24 +125,27 @@ def test_preflight_recommendations():
 
 
 @pytest.mark.asyncio
-async def test_convert_file_disabled_via_env(monkeypatch, tmp_path):
-    from tests.conftest import tool_fn
-
-    monkeypatch.setenv("TWEEKIT_ALLOW_LOCAL_FILES", "0")
+async def test_convert_file_disabled_by_default(monkeypatch, tmp_path):
+    monkeypatch.delenv("TWEEKIT_ALLOW_LOCAL_FILES", raising=False)
+    monkeypatch.setenv("TWEEKIT_API_KEY", "k")
+    monkeypatch.setenv("TWEEKIT_API_SECRET", "s")
     fn = tool_fn(server.convert_file)
-    result = await fn(file_path=str(tmp_path / "any.pdf"), outfmt="png", apiKey="k", apiSecret="s")
+    result = await fn(file_path=str(tmp_path / "any.pdf"), outfmt="png")
     assert "error" in result
-    assert "TWEEKIT_ALLOW_LOCAL_FILES=0" in result["error"]
+    assert "disabled by default" in result["error"]
 
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_convert_file_tool_writes_output_path(tmp_path):
-    from tests.conftest import tool_fn
-
+async def test_convert_file_tool_writes_output_path_inside_workspace(monkeypatch, tmp_path):
     src = tmp_path / "sample.psd"
     src.write_bytes(b"PSDDATA")
     dest = tmp_path / "out" / "sample.png"
+
+    monkeypatch.setenv("TWEEKIT_ALLOW_LOCAL_FILES", "1")
+    monkeypatch.setenv("TWEEKIT_ALLOWED_DIRS", str(tmp_path))
+    monkeypatch.setenv("TWEEKIT_API_KEY", "key")
+    monkeypatch.setenv("TWEEKIT_API_SECRET", "secret")
 
     respx.post(server.BASE_URL).mock(
         return_value=Response(200, content=b"PNG_OUTPUT_BYTES", headers={"content-type": "image/png"})
@@ -145,12 +156,9 @@ async def test_convert_file_tool_writes_output_path(tmp_path):
         file_path=str(src),
         outfmt="png",
         output_path=str(dest),
-        apiKey="key",
-        apiSecret="secret",
     )
 
     assert result["status"] == "ok"
     assert dest.exists()
     assert dest.read_bytes() == b"PNG_OUTPUT_BYTES"
     assert result["size_bytes"] == len(b"PNG_OUTPUT_BYTES")
-

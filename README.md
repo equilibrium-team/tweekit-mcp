@@ -1,11 +1,11 @@
 <!-- mcp-name: io.github.equilibrium-team/tweekit -->
-<!-- mcp-name: io.github.equilibrium-team/tweekit-mcp -->
+<!-- mcp-name: io.tweekit/mcp -->
 
 # TweekIT MCP Server & Python SDK
 
 *Ingest, Preflight, and Convert Just About Any Filetype Into AI Workflows — Official Open-Source Package by **AMPS dba Equilibrium***
 
-Current version: v1.8.0
+Current version: v1.8.1
 
 > **🤖 Claude & AI Hub Users**: Tired of "unsupported file type" errors? Jump to our [Claude File Format Enabler](#solving-claudes-file-type-limitations) – a browser-based tool that converts 450+ formats (DOC, XLS, PSD, DWG, Camera RAW, etc.) into AI-compatible files in seconds, or use our built-in Python `preflight_check` and `TweekitClient` SDK directly in your pipeline.
 
@@ -177,20 +177,15 @@ Set environment variables as needed:
 Create your free TweekIT account and get started with 10,000 API calls included at no cost.  
 [Pricing and Signup here](https://www.tweekit.io/) to generate your API credentials in the MANAGE ACCOUNT page and start using the service.
 
-### Step 2: Choose Your Authentication Method
+### Step 2: Configure Credentials Securely (Environment or HTTP Headers Only)
 
-TweekIT supports multiple authentication methods. However ONLY the Key/Secret pair method will work with the MCP integration.
+TweekIT MCP authenticates using your **API Key and Secret** configured in MCP client `headers` (for hosted Streamable HTTP) or `TWEEKIT_API_KEY` / `TWEEKIT_API_SECRET` environment variables (for local `stdio`).
 
-- **API Key and Secret** – Required for MCP production use, more secure and easier to control access
-
-You will find these values in your account dashboard after sign up. Keep them safe and never expose them in client-side code.
+> **Security Rule:** Never place `TWEEKIT_API_KEY` or `TWEEKIT_API_SECRET` inside natural-language prompts or LLM tool-call arguments. Credentials are intentionally excluded from MCP tool schemas so they never appear in model context or conversation logs.
 
 ### Step 3: Make Your First API Call
 
-Below is a minimal working json example that sends an image with a basic resize operation, previews the transformation, and returns the result. This example uses API Key and Secret authentication.
-
-The JSON was captured from the use of MCP Inspector with the publicly available MCP server.
-
+Once your MCP client is configured with `ApiKey` and `ApiSecret` HTTP headers (or `TWEEKIT_API_KEY` / `TWEEKIT_API_SECRET` environment variables), call `convert` with only document and geometry arguments:
 
 ```json
 {
@@ -198,8 +193,6 @@ The JSON was captured from the use of MCP Inspector with the publicly available 
   "params": {
     "name": "convert",
     "arguments": {
-      "apiKey": "{Your TweekIT API key}",
-      "apiSecret": "{Your TweekIT API secret}",
       "inext": "png",
       "outfmt": "png",
       "blob": "iVBORw0KGgoAAAANSUhEUgAAABwAAAA6CAYAAACj+Dm/AAAABmJLR0QAAAAAAAD5Q7t/AAAACXBIWXMAAAsSAAALEgHS3X78AAAAHnRFWHRTb2Z0d2FyZQBFcXVpbGlicml1bSBNZWRpYVJpY2h7w4AAAAAB30lEQVRYhe2Xv0vDQBTHP4rQTRGhLqKiYt38MaggKIi46e6im2Rw7FJw7NAh4uAi+h/oIDgKnR3VQZROKiLYrZtOOiQH1+RevJQ0INwXQt7de7lP++7l7tJTq9XIU7250hzQAR3QAR3QAXMH3gM/wG0ewHtgNrSXgXo3gXUNprTSLaAPrBv6C4DXDeBBgm8ha+ArwT+RNJkl8BoY/SNmKiugB2xaxA1nBayQnEolY+GkBdqkUlescNIAPWBL8D0I/bHCSQOsCP3fwFx4jypWOLbApFRehfdPgy9WODbApKpsATuh/WHwxwrHBphUlRea/SLErKUBniGn8g3Y19qPQtx4GuBugu8y0q4KcRN6oy9hwFvkVDaAfoKtaQgYBAaE2KINsE6wkUqaDi9b+UBZAn5ht3Sl0bwyTHOYNQxgRAIad+kMNJY3sAAcQvscesQPQ7qaBPP7Bbxr/XeaXab9BKdrMQrcS4AdhYPZ6EkArkJ7SucNQRC8c7YwCNZW084xAPgKeI25Or+B4xQwpWehf0MBl4SAG+C0A6D0zIwCFg3OJrDdAUwBTaeAggI2DM6TDmFKcwT7pa6GApY0aAs4R17908gnyBTh+CX9tShlAIiqSuSH/+sPUgd0QAf8J8BfT2hGnMaA5CUAAAAASUVORK5CYII=",
@@ -207,7 +200,7 @@ The JSON was captured from the use of MCP Inspector with the publicly available 
       "width": 30,
       "height": 30,
       "page": 1,
-      "bgcolor": ""
+      "bgColor": ""
     }
   },
   "jsonrpc": "2.0",
@@ -259,14 +252,14 @@ The currently available resource name is 'version'. The currently available tool
 
 ### Versioning & Build Numbers
 
-The project tracks semantic versions in `major.minor.build` format (for example, `1.8.0`). Use `scripts/bump_version.py` to keep every metadata file aligned:
+The project tracks semantic versions in `major.minor.build` format (for example, `1.8.1`). Use `scripts/bump_version.py` to keep every metadata file aligned:
 
 ```bash
 # Increment just the build number (e.g., 1.8.0 -> 1.8.1)
 python scripts/bump_version.py --bump-build
 
 # Set an explicit version
-python scripts/bump_version.py --set 1.8.0
+python scripts/bump_version.py --set 1.8.1
 ```
 
 The script updates `VERSION`, `pyproject.toml`, `server.py`, `server.json`, `claude/manifest.json`, `README.md`, and `uv.lock` so container builds, manifests, and docs stay synchronized.
@@ -319,13 +312,13 @@ bash scripts/deploy_cloud_run.sh local --version dev
 Deploy to staging (creates/updates the `tweekit-mcp-stage` service):
 
 ```bash
-bash scripts/deploy_cloud_run.sh stage --version 1.8.0
+bash scripts/deploy_cloud_run.sh stage --version 1.8.1
 ```
 
 Deploy to production (updates the `tweekit-mcp` service):
 
 ```bash
-bash scripts/deploy_cloud_run.sh prod --version 1.8.0
+bash scripts/deploy_cloud_run.sh prod --version 1.8.1
 ```
 
 Pass `--project <PROJECT_ID>` if you need to override the active `gcloud` configuration, and `--env-file <path>` to supply Cloud Run environment variables in YAML format.
@@ -357,14 +350,12 @@ Examples
   }
   ```
 
-- Claude tool call (arguments example):
+- Claude tool call (arguments example — credentials supplied via transport headers or env vars):
 
   ```json
   {
     "name": "convert",
     "arguments": {
-      "apiKey": "YOUR_KEY",
-      "apiSecret": "YOUR_SECRET",
       "inext": "png",
       "outfmt": "webp",
       "blob": "<base64>",
@@ -378,15 +369,22 @@ Examples
 
   ```ts
   import { Client } from "@modelcontextprotocol/sdk/client";
-  import { HttpClientTransport } from "@modelcontextprotocol/sdk/client/transport/http";
+  import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-  const transport = new HttpClientTransport(new URL("https://mcp.tweekit.io/mcp"));
-  const client = new Client({ name: "tweekit-example", version: "1.0.0" }, { capabilities: {} }, transport);
-  await client.connect();
+  const transport = new StreamableHTTPClientTransport(new URL("https://mcp.tweekit.io/mcp"), {
+    requestInit: {
+      headers: {
+        ApiKey: process.env.TWEEKIT_API_KEY ?? "",
+        ApiSecret: process.env.TWEEKIT_API_SECRET ?? "",
+      },
+    },
+  });
+  const client = new Client({ name: "tweekit-example", version: "1.0.0" }, { capabilities: {} });
+  await client.connect(transport);
   const tools = await client.listTools();
   const res = await client.callTool({
     name: "doctype",
-    arguments: { ext: "pdf", apiKey: process.env.TWEEKIT_API_KEY, apiSecret: process.env.TWEEKIT_API_SECRET },
+    arguments: { extension: "pdf" },
   });
   console.log(res);
   ```
@@ -398,15 +396,21 @@ Examples
   import os
 
   from fastmcp import Client
+  from fastmcp.client.transports import StreamableHttpTransport
 
   async def main():
-      async with Client("https://mcp.tweekit.io/mcp") as c:
+      transport = StreamableHttpTransport(
+          "https://mcp.tweekit.io/mcp",
+          headers={
+              "ApiKey": os.environ["TWEEKIT_API_KEY"],
+              "ApiSecret": os.environ["TWEEKIT_API_SECRET"],
+          },
+      )
+      async with Client(transport) as c:
           print(await c.list_tools())
           out = await c.call_tool(
               "convert",
               {
-                  "apiKey": os.environ["TWEEKIT_API_KEY"],
-                  "apiSecret": os.environ["TWEEKIT_API_SECRET"],
                   "inext": "png",
                   "outfmt": "txt",
                   "blob": "<base64>",
@@ -428,18 +432,18 @@ We maintain the local bundle with `scripts/build_claude_bundle.py` and the guide
 After connecting (either method):
 
 - Ask: “List supported input types via doctype.”
-- Or call convert with your key/secret and a base64 blob:
+- Or call `convert` with a base64 blob (credentials come from your configured headers or env vars):
 
 ```json
 {
   "name": "convert",
-  "arguments": { "apiKey": "…", "apiSecret": "…", "inext": "png", "outfmt": "webp", "blob": "<base64>" }
+  "arguments": { "inext": "png", "outfmt": "webp", "blob": "<base64>" }
 }
 ```
 
 ### Quickstart (ChatGPT MCP)
 
-If your ChatGPT environment supports MCP tools, add an HTTP MCP server pointing to the public endpoint.
+If your ChatGPT environment supports MCP tools, add an HTTP MCP server pointing to the public endpoint with `ApiKey` and `ApiSecret` headers.
 
 1) Configure server: URL `https://mcp.tweekit.io/mcp` (HTTP transport)
 2) Use tools in a chat:
@@ -447,7 +451,7 @@ If your ChatGPT environment supports MCP tools, add an HTTP MCP server pointing 
 - doctype
 
 ```json
-{ "name": "doctype", "arguments": { "ext": "pdf", "apiKey": "…", "apiSecret": "…" } }
+{ "name": "doctype", "arguments": { "extension": "pdf" } }
 ```
 
 - convert
@@ -456,8 +460,6 @@ If your ChatGPT environment supports MCP tools, add an HTTP MCP server pointing 
 {
   "name": "convert",
   "arguments": {
-    "apiKey": "…",
-    "apiSecret": "…",
     "inext": "png",
     "outfmt": "txt",
     "blob": "<base64>"
@@ -611,9 +613,11 @@ Fetches the current version of the TweekIT API. Takes no parameters.
 #### /server-version
 
 Description:
-Returns this MCP server's version string (e.g., `1.8.0`). Takes no parameters.
+Returns this MCP server's version string (e.g., `1.8.1`). Takes no parameters.
 
 ### Tools
+
+> **Authentication:** All authenticated tools read credentials exclusively from HTTP request headers (`ApiKey` and `ApiSecret`) or environment variables (`TWEEKIT_API_KEY` and `TWEEKIT_API_SECRET`). Never include secrets in natural-language prompts or tool arguments.
 
 #### /doctype
 
@@ -622,16 +626,12 @@ Retrieves a list of supported input file formats or maps a file extension to its
 
 Parameters:
 - extension: File extension (e.g., jpg, docx). Optional, defaults to '*'. (return all supported input document types).
-- apiKey: API key for authentication.
-- apiSecret: API secret for authentication.
 
 #### /convert
 
 Description: Converts a base64-encoded document to the specified output format.
 
 Parameters:
-- apiKey: API key for authentication.
-- apiSecret: API secret for authentication.
 - inext: Input file extension (e.g., jpg, png, doc, docx, etc.).
 - outfmt: Desired output format (e.g., jpg, pdf, png).
 - blob: Base64-encoded document data.
@@ -649,20 +649,22 @@ The image of the specified page (or page 1) will be returned in the response wit
 
 #### /convert_url
 
-Description: Downloads a remote document over HTTP(S) and routes it through the TweekIT conversion pipeline without requiring the caller to supply base64 input.
+Description: Downloads a public HTTPS document (with DNS SSRF, redirect, and download-size protections) and routes it through the TweekIT conversion pipeline without requiring the caller to supply base64 input.
 
 Parameters:
-- apiKey: API key for authentication.
-- apiSecret: API secret for authentication.
-- url: HTTPS or HTTP URL pointing to the source document.
+- url: Public `https://` URL pointing to the source document.
 - outfmt: Desired output format (e.g., jpg, pdf, png).
 
 Optional:
 - inext: Override for the input extension. When omitted, the server deduces it from the URL path or the response content-type header.
 - noRasterize, width, height, x1, y1, x2, y2, page, alpha, bgColor: Same semantics as `/convert`.
-- fetchHeaders: Object of HTTP headers (e.g., Authorization) to include when downloading the remote asset.
+- fetchHeaders: Optional allowlisted non-credential HTTP headers (`Accept`, `Accept-Language`, `Cache-Control`, `Range`, `User-Agent`).
 
 Returns: Same as `/convert`—binary image/file payloads surface as FastMCP `Image`/`File` objects; JSON responses are passed through.
+
+#### /convert_file (Opt-In Local Stdio Only)
+
+Description: Converts a local file within an explicitly configured workspace directory without base64-encoding into the LLM context. Disabled by default (`TWEEKIT_ALLOW_LOCAL_FILES=0`) and disabled over HTTP; opt in on local `stdio` servers with `TWEEKIT_ALLOW_LOCAL_FILES=1` and `TWEEKIT_ALLOWED_DIRS=/path/to/workspace`. Resolves symlinks, blocks sensitive credential/dotfile paths, and refuses to overwrite existing files unless `TWEEKIT_ALLOW_OVERWRITE=1` is set.
 
 #### /search
 
@@ -705,8 +707,6 @@ Automatically crop and resize images into a consistent size and format.
   "params": {
     "name": "convert",
     "arguments": {
-      "apiKey": "{Your TweekIT API key}",
-      "apiSecret": "{Your TweekIT API secret}",
       "inext": "png",
       "outfmt": "png",
       "blob": "iVBORw0KGgoAAAANSUhEUgAAABwAAAA6CAYAAACj+Dm/AAAABmJLR0QAAAAAAAD5Q7t/AAAACXBIWXMAAAsSAAALEgHS3X78AAAAHnRFWHRTb2Z0d2FyZQBFcXVpbGlicml1bSBNZWRpYVJpY2h7w4AAAAAB30lEQVRYhe2Xv0vDQBTHP4rQTRGhLqKiYt38MaggKIi46e6im2Rw7FJw7NAh4uAi+h/oIDgKnR3VQZROKiLYrZtOOiQH1+RevJQ0INwXQt7de7lP++7l7tJTq9XIU7250hzQAR3QAR3QAXMH3gM/wG0ewHtgNrSXgXo3gXUNprTSLaAPrBv6C4DXDeBBgm8ha+ArwT+RNJkl8BoY/SNmKiugB2xaxA1nBayQnEolY+GkBdqkUlescNIAPWBL8D0I/bHCSQOsCP3fwFx4jypWOLbApFRehfdPgy9WODbApKpsATuh/WHwxwrHBphUlRea/SLErKUBniGn8g3Y19qPQtx4GuBugu8y0q4KcRN6oy9hwFvkVDaAfoKtaQgYBAaE2KINsE6wkUqaDi9b+UBZAn5ht3Sl0bwyTHOYNQxgRAIad+kMNJY3sAAcQvscesQPQ7qaBPP7Bbxr/XeaXab9BKdrMQrcS4AdhYPZ6EkArkJ7SucNQRC8c7YwCNZW084xAPgKeI25Or+B4xQwpWehf0MBl4SAG+C0A6D0zIwCFg3OJrDdAUwBTaeAggI2DM6TDmFKcwT7pa6GApY0aAs4R17908gnyBTh+CX9tShlAIiqSuSH/+sPUgd0QAf8J8BfT2hGnMaA5CUAAAAASUVORK5CYII=",
@@ -714,7 +714,7 @@ Automatically crop and resize images into a consistent size and format.
       "width": 30,
       "height": 30,
       "page": 1,
-      "bgcolor": ""
+      "bgColor": ""
     }
   }
 }
@@ -742,14 +742,12 @@ Process identity document photos into standardized formats for automated verific
   "params": {
     "name": "convert",
     "arguments": {
-      "apiKey": "{Your TweekIT API key}",
-      "apiSecret": "{Your TweekIT API secret}",
       "inext": "jpg",
       "outfmt": "webp",
       "blob": "{Your base64 encoded photo}",
       "width": 600,
       "height": 600,
-      "bgcolor": "FFFFFF"
+      "bgColor": "FFFFFF"
     }
   }
 }
@@ -777,14 +775,12 @@ Generate platform-specific product images with correct aspect ratios and backgro
   "params": {
     "name": "convert",
     "arguments": {
-      "apiKey": "{Your TweekIT API key}",
-      "apiSecret": "{Your TweekIT API secret}",
       "inext": "jpg",
       "outfmt": "jpg",
       "blob": "{Your base64 encoded photo}",
       "width": 1080,
       "height": 1080,
-      "bgcolor": "FFFFFF"
+      "bgColor": "FFFFFF"
     }
   }
 }
@@ -813,8 +809,6 @@ Convert files between formats for compatibility across different tools and workf
   "params": {
     "name": "convert",
     "arguments": {
-      "apiKey": "{Your TweekIT API key}",
-      "apiSecret": "{Your TweekIT API secret}",
       "inext": "{filename extension of the input doc}",
       "outfmt": "webp",
       "blob": "{Your base64 encoded document}"
@@ -845,8 +839,6 @@ Convert complex document or legacy filetypes from original formats into PDF file
   "params": {
     "name": "convert",
     "arguments": {
-      "apiKey": "{Your TweekIT API key}",
-      "apiSecret": "{Your TweekIT API secret}",
       "inext": "{filename extension of the input doc}",
       "outfmt": "pdf",
       "noRasterize": true,

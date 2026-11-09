@@ -17,10 +17,11 @@ SERVER_SOURCE = REPO_ROOT / "server.py"
 
 # Keep dependency pins in sync with uv.lock / pyproject.toml.
 REQUIRED_DEPENDENCIES = [
-    "certifi>=2026.10.19",
-    "fastmcp>=3.0.0",
+    "certifi>=2026.10.23",
+    "fastmcp>=4.1.6",
+    "mcp>=2.3.0",
     "httpx>=0.28.1",
-    "fastapi>=0.115.0",
+    "fastapi>=0.162.2",
 ]
 
 BOOTSTRAP_SCRIPT = '''#!/usr/bin/env python3

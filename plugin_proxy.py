@@ -1,13 +1,21 @@
 import base64
 import os
 from typing import Dict, Optional
+from urllib.parse import quote
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from server import _resolve_extension, recommend_ai_format
+from server import (
+    DEFAULT_MAX_BLOB_CHARS,
+    _resolve_extension,
+    _safe_fetch_remote,
+    _validate_doc_id,
+    _validate_format_token,
+    recommend_ai_format,
+)
 
 # --- Configuration ---
 DEFAULT_BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
@@ -25,10 +33,9 @@ DEFAULT_CSP = (
 )
 
 # --- FastAPI App Setup ---
-# Main app for the root endpoints (/version, /doctype, /preflight, /convert, /convert-url, /documents/{doc_id})
 app = FastAPI(
     title="TweekIT API Proxy",
-    version="1.8.0",
+    version="1.8.1",
     description="REST proxy exposing TweekIT MCP tools for OpenAI Apps SDK, ChatGPT Actions, and AI Hub integration.",
 )
 
@@ -41,14 +48,11 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
-# A separate app for the manifest, which will be mounted under /mcp
 mcp_manifest_app = FastAPI()
 
 
-# --- Pydantic Models ---
+# --- Pydantic Models (no inline API credentials in request bodies) ---
 class ConvertRequest(BaseModel):
-    apiKey: Optional[str] = Field(None, description="API key for TweekIT authentication.")
-    apiSecret: Optional[str] = Field(None, description="API secret for TweekIT authentication.")
     inext: str = Field(..., description="Input document extension (e.g. jpg, png, pdf).")
     outfmt: str = Field(..., description="Desired output format (e.g. png, pdf).")
     blob: str = Field(..., description="Base64 encoded document payload.")
@@ -65,9 +69,7 @@ class ConvertRequest(BaseModel):
 
 
 class ConvertUrlRequest(BaseModel):
-    apiKey: Optional[str] = Field(None, description="API key for TweekIT authentication.")
-    apiSecret: Optional[str] = Field(None, description="API secret for TweekIT authentication.")
-    url: str = Field(..., description="Direct download URL for the source document or image.")
+    url: str = Field(..., description="Public HTTPS download URL for the source document or image.")
     outfmt: str = Field(..., description="Desired output format (e.g. png, pdf).")
     inext: Optional[str] = Field(None, description="Optional override for the input extension.")
     width: int = Field(0, description="Optional resize width in pixels.")
@@ -80,7 +82,10 @@ class ConvertUrlRequest(BaseModel):
     alpha: bool = Field(True, description="Preserve alpha transparency when producing raster formats.")
     noRasterize: bool = Field(False, description="Skip rasterization when supported.")
     bgcolor: str = Field("", description="Background color for transparent documents (hex RGB).")
-    fetchHeaders: Optional[Dict[str, str]] = Field(None, description="Optional HTTP headers when downloading the remote URL.")
+    fetchHeaders: Optional[Dict[str, str]] = Field(
+        None,
+        description="Optional allowlisted non-credential HTTP headers (Accept, Accept-Language, Cache-Control, Range, User-Agent).",
+    )
 
 
 # --- Helper Functions ---
@@ -103,20 +108,18 @@ def _resolve_credentials(
     header_key: Optional[str],
     header_secret: Optional[str],
     authorization: Optional[str] = None,
-    body_key: Optional[str] = None,
-    body_secret: Optional[str] = None,
     *,
     allow_defaults: bool = True,
     required: bool = True,
 ) -> tuple[Optional[str], Optional[str]]:
     bearer = _extract_bearer(authorization)
-    api_key = header_key or body_key or (bearer if bearer else None)
-    api_secret = header_secret or body_secret
+    api_key = header_key or (bearer if bearer else None)
+    api_secret = header_secret
     if allow_defaults:
         api_key = api_key or DEFAULT_API_KEY
         api_secret = api_secret or DEFAULT_API_SECRET
     if required and (not api_key or not api_secret):
-        raise HTTPException(status_code=401, detail="Missing TweekIT API credentials.")
+        raise HTTPException(status_code=401, detail="Missing TweekIT API credentials in request headers.")
     return api_key, api_secret
 
 
@@ -166,7 +169,12 @@ async def get_doctype(
     api_secret: Optional[str] = Header(None, alias="X-Api-Secret"),
     authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
-    resolved_ext = ext or extension or "*"
+    raw_ext = (ext or extension or "*").strip()
+    try:
+        resolved_ext = "*" if raw_ext in {"", "*"} else _validate_format_token(raw_ext, "ext")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     key, secret = _resolve_credentials(api_key, api_secret, authorization, allow_defaults=False)
     headers = {"ApiKey": key, "ApiSecret": secret}
     response = await _call_tweekit("doctype", headers=headers, params={"ext": resolved_ext})
@@ -180,12 +188,19 @@ async def post_convert(
     api_secret: Optional[str] = Header(None, alias="X-Api-Secret"),
     authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
-    key, secret = _resolve_credentials(
-        api_key, api_secret, authorization, payload.apiKey, payload.apiSecret, allow_defaults=False
-    )
+    key, secret = _resolve_credentials(api_key, api_secret, authorization, allow_defaults=False)
+    try:
+        safe_inext = _validate_format_token(payload.inext, "inext")
+        safe_outfmt = _validate_format_token(payload.outfmt, "outfmt")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not payload.blob or len(payload.blob) > DEFAULT_MAX_BLOB_CHARS:
+        raise HTTPException(status_code=413, detail="Invalid or oversized base64 document payload.")
+
     headers = {"ApiKey": key, "ApiSecret": secret}
     body = {
-        "Fmt": payload.outfmt,
+        "Fmt": safe_outfmt,
         "Width": payload.width,
         "Height": payload.height,
         "X1": payload.x1,
@@ -197,14 +212,14 @@ async def post_convert(
         "Alpha": payload.alpha,
         "NoRasterize": payload.noRasterize,
         "Page": payload.page,
-        "DocDataType": payload.inext,
+        "DocDataType": safe_inext,
         "DocData": payload.blob,
     }
     response = await _call_tweekit("", method="POST", headers=headers, json=body)
     content_type = response.headers.get("content-type", "").lower()
     if content_type.startswith("application/json"):
         return response.json()
-    disp_filename = f"converted.{payload.outfmt.strip('.') or 'bin'}"
+    disp_filename = f"converted.{safe_outfmt}"
     return StreamingResponse(
         response.aiter_bytes(),
         media_type=content_type or "application/octet-stream",
@@ -212,33 +227,39 @@ async def post_convert(
     )
 
 
-@app.post("/convert-url", summary="Download a remote URL and convert it to the requested format.")
+@app.post("/convert-url", summary="Download a public HTTPS URL and convert it to the requested format.")
 async def post_convert_url(
     payload: ConvertUrlRequest,
     api_key: Optional[str] = Header(None, alias="X-Api-Key"),
     api_secret: Optional[str] = Header(None, alias="X-Api-Secret"),
     authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
-    key, secret = _resolve_credentials(
-        api_key, api_secret, authorization, payload.apiKey, payload.apiSecret, allow_defaults=False
-    )
-    if not payload.url.lower().startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
+    key, secret = _resolve_credentials(api_key, api_secret, authorization, allow_defaults=False)
+    try:
+        safe_outfmt = _validate_format_token(payload.outfmt, "outfmt")
+        raw_bytes, dl_ct, _, final_url = await _safe_fetch_remote(
+            payload.url,
+            fetch_headers=payload.fetchHeaders,
+            allow_auth_headers=False,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Remote URL returned HTTP {exc.response.status_code}.",
+        ) from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="Failed to download remote URL.") from exc
 
-    fetch_headers = {str(k): str(v) for k, v in (payload.fetchHeaders or {}).items()} or None
-    timeout = httpx.Timeout(20.0, read=60.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        dl_resp = await client.get(payload.url, headers=fetch_headers)
-        dl_resp.raise_for_status()
-
-    if not dl_resp.content:
+    if not raw_bytes:
         raise HTTPException(status_code=400, detail="Downloaded remote content was empty.")
 
-    resolved_inext = _resolve_extension(payload.url, payload.inext, dl_resp.headers.get("content-type"))
-    blob = base64.b64encode(dl_resp.content).decode("ascii")
+    resolved_inext = _resolve_extension(final_url, payload.inext, dl_ct)
+    blob = base64.b64encode(raw_bytes).decode("ascii")
     headers = {"ApiKey": key, "ApiSecret": secret}
     body = {
-        "Fmt": payload.outfmt,
+        "Fmt": safe_outfmt,
         "Width": payload.width,
         "Height": payload.height,
         "X1": payload.x1,
@@ -257,7 +278,7 @@ async def post_convert_url(
     content_type = response.headers.get("content-type", "").lower()
     if content_type.startswith("application/json"):
         return response.json()
-    disp_filename = f"converted.{payload.outfmt.strip('.') or 'bin'}"
+    disp_filename = f"converted.{safe_outfmt}"
     return StreamingResponse(
         response.aiter_bytes(),
         media_type=content_type or "application/octet-stream",
@@ -272,20 +293,23 @@ async def delete_document_endpoint(
     api_secret: Optional[str] = Header(None, alias="X-Api-Secret"),
     authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
+    try:
+        safe_doc_id = _validate_doc_id(doc_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     key, secret = _resolve_credentials(api_key, api_secret, authorization, allow_defaults=False)
     headers = {"ApiKey": key, "ApiSecret": secret}
-    response = await _call_tweekit(doc_id, method="DELETE", headers=headers)
+    response = await _call_tweekit(quote(safe_doc_id, safe=""), method="DELETE", headers=headers)
     try:
         return response.json()
     except Exception:
-        return {"message": "Document deleted successfully", "docId": doc_id}
+        return {"message": "Document deleted successfully", "docId": safe_doc_id}
 
 
 # --- Manifest Endpoint (under /mcp) ---
 @mcp_manifest_app.get("/.well-known/ai-plugin.json", include_in_schema=False)
 async def serve_manifest(request: Request):
-    # The public URL for the API endpoints is the root of the service.
-    # If PLUGIN_PUBLIC_BASE_URL is 'https://plugin.tweekit.io/mcp', we strip the '/mcp'.
     api_url = PUBLIC_API_BASE_URL.removesuffix("/mcp") or str(request.base_url).rstrip("/")
 
     manifest = {
@@ -297,7 +321,7 @@ async def serve_manifest(request: Request):
         "auth": {
             "type": "service_http",
             "authorization_type": "bearer",
-            "instructions": "Set the Authorization header to 'Bearer <token>' where the token is your TweekIT API key. Optionally supply X-Api-Secret for partner accounts or configure default credentials server-side.",
+            "instructions": "Set the Authorization header to 'Bearer <token>' where the token is your TweekIT API key, and supply X-Api-Secret in headers.",
         },
         "api": {
             "type": "openapi",
@@ -311,5 +335,4 @@ async def serve_manifest(request: Request):
     return JSONResponse(manifest)
 
 
-# Mount the manifest app at the /mcp prefix
 app.mount("/mcp", mcp_manifest_app)

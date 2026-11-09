@@ -5,6 +5,18 @@ All notable changes to the TweekIT MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-11-09
+
+### Security
+- **Supply-Chain Dependency Upgrade (`0` CVEs)**: Raised dependency floors to `fastmcp>=4.1.6`, `mcp>=2.3.0`, `fastapi>=0.162.2`, and `certifi>=2026.10.23` across `pyproject.toml`, `uv.lock`, `functions/requirements.txt`, and `scripts/build_claude_bundle.py`, remediating `CVE-2026-32871`, `CVE-2026-27124` (`GHSA-rww4-4w9c-7733`), `GHSA-7xgj-8392-5q4r`, and `CVE-2025-64340`.
+- **Credential-Free MCP Tool Schemas & Native HTTP Header Auth**: Removed `apiKey` and `apiSecret` from all LLM-visible MCP tool schemas (`server.py`, `functions/main.py`) and REST JSON request bodies (`plugin_proxy.py`); wired `fastmcp.server.dependencies.get_http_headers()` and `StreamableHttpTransport` header authentication in `TweekitClient`.
+- **Opt-In Workspace Sandbox for `convert_file`**: Disabled local file conversion by default (`TWEEKIT_ALLOW_LOCAL_FILES=0`) and over HTTP transport; added symlink-resolved confinement to `TWEEKIT_ALLOWED_DIRS`, sensitive dotfile/credential denylists, safe output-extension checks, and atomic `xb` non-overwrite protection unless `TWEEKIT_ALLOW_OVERWRITE=1` is set.
+- **SSRF, Redirect, Size & Header Protections (`convert_url`, `fetch`, `/convert-url`)**: Enforced `https://`-only URLs, DNS IP validation blocking loopback/RFC1918/link-local/CGNAT/cloud-metadata addresses on initial connect and every redirect hop (`max_redirects=5`), a `25 MiB` streaming download cap, and a non-credential `fetchHeaders` allowlist.
+- **Input & Host Hardening**: Added strict alphanumeric validation on `docId` and format tokens (`inext`/`outfmt`), defaulted local `--host` binding to `127.0.0.1` (`0.0.0.0` in Cloud Run/Docker) with `host_origin_protection="auto"`, and published PyPI distributions via OIDC Trusted Publishing with PEP 740 provenance attestations.
+
+### Fixed
+- **Trailing-Slash `/mcp/` In-Place Routing & Reverse-Proxy Scheme Preservation**: Added `_NormalizeMcpPathMiddleware` and Uvicorn `--proxy-headers` support so both `https://mcp.tweekit.io/mcp` and `https://mcp.tweekit.io/mcp/` initialize directly (`200 OK`) without `307` redirects or `http://` scheme downgrades behind Cloud Run TLS termination.
+
 ## [1.8.0] - 2026-10-28
 
 ### Added

@@ -3,7 +3,7 @@
   "name": "io.github.equilibrium-team/tweekit",
   "title": "TweekIT MCP Server",
   "description": "Preflight and convert 450+ file types for AI workflows via TweekIT MCP & SDK (Equilibrium).",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "websiteUrl": "https://www.tweekit.io/",
   "repository": {
     "source": "github",
@@ -15,7 +15,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "tweekit",
-      "version": "1.8.0",
+      "version": "1.8.1",
       "runtimeHint": "uvx",
       "packageArguments": [
         {

@@ -1,10 +1,10 @@
 """
 Async & direct Python SDK helpers for the TweekIT MCP server and REST API.
 
-Published by AMPS dba Equilibrium (`tweekit-mcp` on PyPI).
+Published by AMPS dba Equilibrium (`tweekit` on PyPI).
 
-Usage (MCP Client):
-    from tweekit_mcp import TweekitClient
+Usage (MCP Client — credentials sent via HTTP headers, never in tool arguments):
+    from tweekit import TweekitClient
     import asyncio
     from pathlib import Path
 
@@ -18,7 +18,7 @@ Usage (MCP Client):
     asyncio.run(main())
 
 Usage (Direct REST Client — no MCP hop required):
-    from tweekit_mcp import TweekitDirectClient
+    from tweekit import TweekitDirectClient
     import asyncio
 
     async def main():
@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any
 
 from fastmcp import Client
+from fastmcp.client.transports import StreamableHttpTransport
 
 import server as _server_mod
 
@@ -57,8 +58,18 @@ class TweekitClient:
         self.api_secret = api_secret or os.getenv("TWEEKIT_API_SECRET")
         self._client: Client | None = None
 
+    def _build_transport_or_target(self) -> Any:
+        headers: dict[str, str] = {}
+        if self.api_key:
+            headers["ApiKey"] = self.api_key
+        if self.api_secret:
+            headers["ApiSecret"] = self.api_secret
+        if headers and isinstance(self.server_url, str) and self.server_url.startswith(("http://", "https://")):
+            return StreamableHttpTransport(self.server_url, headers=headers)
+        return self.server_url
+
     async def __aenter__(self) -> "TweekitClient":
-        self._client = Client(self.server_url)
+        self._client = Client(self._build_transport_or_target())
         await self._client.__aenter__()
         return self
 
@@ -73,13 +84,10 @@ class TweekitClient:
         return [tool.name for tool in tools]
 
     async def doctype(self, extension: str = "*", *, ext: str | None = None) -> Any:
+        self._require_credentials()
         client = self._ensure_client()
         resolved_ext = ext if ext is not None else extension
-        payload = {
-            "extension": resolved_ext,
-            "apiKey": self._require_key(),
-            "apiSecret": self._require_secret(),
-        }
+        payload = {"extension": resolved_ext}
         result = await client.call_tool("doctype", payload)
         if result.is_error:
             raise RuntimeError("TweekIT doctype tool returned an error response.")
@@ -113,10 +121,9 @@ class TweekitClient:
         alpha: bool = True,
         bgcolor: str = "",
     ) -> Any:
+        self._require_credentials()
         client = self._ensure_client()
         payload: dict[str, Any] = {
-            "apiKey": self._require_key(),
-            "apiSecret": self._require_secret(),
             "inext": inext.lstrip(".") or "bin",
             "outfmt": outfmt,
             "blob": base64.b64encode(data).decode("ascii"),
@@ -153,11 +160,10 @@ class TweekitClient:
         alpha: bool = True,
         bgcolor: str = "",
     ) -> Any:
+        self._require_credentials()
         file_path = Path(path)
         client = self._ensure_client()
         payload: dict[str, Any] = {
-            "apiKey": self._require_key(),
-            "apiSecret": self._require_secret(),
             "inext": (inext or file_path.suffix).lstrip(".") or "bin",
             "outfmt": outfmt,
             "blob": self._encode_file(file_path),
@@ -195,10 +201,9 @@ class TweekitClient:
         bgcolor: str = "",
         fetch_headers: dict[str, str] | None = None,
     ) -> Any:
+        self._require_credentials()
         client = self._ensure_client()
         payload: dict[str, Any] = {
-            "apiKey": self._require_key(),
-            "apiSecret": self._require_secret(),
             "url": url,
             "outfmt": outfmt,
             "noRasterize": no_rasterize,
@@ -253,12 +258,9 @@ class TweekitClient:
         return await asyncio.gather(*(_process(item) for item in items))
 
     async def delete_document(self, doc_id: str) -> Any:
+        self._require_credentials()
         client = self._ensure_client()
-        payload = {
-            "docId": doc_id,
-            "apiKey": self._require_key(),
-            "apiSecret": self._require_secret(),
-        }
+        payload = {"docId": doc_id}
         result = await client.call_tool("delete_document", payload)
         if result.is_error:
             raise RuntimeError("TweekIT delete_document tool returned an error response.")
@@ -286,6 +288,9 @@ class TweekitClient:
         if self._client is None:
             raise RuntimeError("Client not connected. Use 'async with TweekitClient()'.")
         return self._client
+
+    def _require_credentials(self) -> tuple[str, str]:
+        return self._require_key(), self._require_secret()
 
     def _require_key(self) -> str:
         if not self.api_key:
@@ -332,8 +337,8 @@ class TweekitDirectClient:
         return await fn()
 
     async def doctype(self, extension: str = "*") -> dict[str, Any]:
-        fn = getattr(_server_mod.doctype, "fn", _server_mod.doctype)
-        return await fn(apiKey=self.api_key, apiSecret=self.api_secret, extension=extension)
+        key, secret = _server_mod._resolve_credentials(self.api_key, self.api_secret)
+        return await _server_mod._doctype_impl(apiKey=key, apiSecret=secret, extension=extension)
 
     async def convert_bytes(
         self,
@@ -390,13 +395,13 @@ class TweekitDirectClient:
         alpha: bool = True,
         bgcolor: str = "",
     ) -> Any:
-        fn = getattr(_server_mod.convert_file, "fn", _server_mod.convert_file)
-        return await fn(
+        key, secret = _server_mod._resolve_credentials(self.api_key, self.api_secret)
+        return await _server_mod._convert_file_impl(
+            apiKey=key,
+            apiSecret=secret,
             file_path=str(path),
             outfmt=outfmt,
             output_path=str(output_path) if output_path else None,
-            apiKey=self.api_key,
-            apiSecret=self.api_secret,
             inext=inext,
             noRasterize=no_rasterize,
             width=width,
@@ -408,6 +413,7 @@ class TweekitDirectClient:
             page=page,
             alpha=alpha,
             bgColor=bgcolor,
+            enforce_sandbox=False,
         )
 
     async def convert_url(
@@ -446,11 +452,12 @@ class TweekitDirectClient:
             alpha=alpha,
             bgColor=bgcolor,
             fetchHeaders=fetch_headers,
+            allow_auth_headers=True,
         )
 
     async def delete_document(self, doc_id: str) -> dict[str, Any]:
-        fn = getattr(_server_mod.delete_document, "fn", _server_mod.delete_document)
-        return await fn(docId=doc_id, apiKey=self.api_key, apiSecret=self.api_secret)
+        key, secret = _server_mod._resolve_credentials(self.api_key, self.api_secret)
+        return await _server_mod._delete_document_impl(apiKey=key, apiSecret=secret, docId=doc_id)
 
 
 async def _demo() -> None:

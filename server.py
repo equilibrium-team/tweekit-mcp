@@ -1,28 +1,100 @@
 import argparse
 import asyncio
 import base64
+import ipaddress
 import json
 import logging
 import mimetypes
 import os
 import re
+import socket
 from pathlib import Path
-from urllib.parse import quote_plus, urlparse
+from typing import Annotated, Any, Dict, FrozenSet, List, Optional
+from urllib.parse import quote, quote_plus, urljoin, urlparse
 
 import httpx
+import uvicorn
 from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_http_headers
 from fastmcp.utilities.types import File, Image
 from mcp.types import ToolAnnotations
-from typing import Any, Dict, FrozenSet, List, Optional, Set, Annotated
 from pydantic import Field
+from starlette.middleware import Middleware
 
 BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
-#BASE_URL = "http://localhost:16377/api/image/"
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING)
 
-SERVER_VERSION = "1.8.0"
+SERVER_VERSION = "1.8.1"
+_ACTIVE_TRANSPORT = "stdio"
+
+DEFAULT_MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024  # 25 MiB remote download cap
+DEFAULT_MAX_LOCAL_FILE_BYTES = 50 * 1024 * 1024  # 50 MiB local input cap
+DEFAULT_MAX_BLOB_CHARS = 70 * 1024 * 1024  # ~50 MiB base64 payload cap
+MAX_REDIRECT_HOPS = 5
+
+_DOC_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_FORMAT_TOKEN_RE = re.compile(r"^[A-Za-z0-9]{1,16}$")
+
+_BLOCKED_HOSTNAMES: FrozenSet[str] = frozenset({
+    "localhost",
+    "localhost.localdomain",
+    "ip6-localhost",
+    "ip6-loopback",
+    "metadata",
+    "metadata.google.internal",
+    "instance-data",
+})
+_BLOCKED_HOST_SUFFIXES = (".localhost", ".local", ".internal", ".home.arpa")
+_CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+_SAFE_FETCH_HEADERS: FrozenSet[str] = frozenset({
+    "accept",
+    "accept-language",
+    "cache-control",
+    "if-modified-since",
+    "if-none-match",
+    "range",
+    "user-agent",
+})
+
+_SENSITIVE_PATH_SEGMENTS: FrozenSet[str] = frozenset({
+    ".ssh",
+    ".aws",
+    ".gnupg",
+    ".kube",
+    ".docker",
+    ".git",
+    ".hg",
+    ".svn",
+    ".config",
+    "etc",
+})
+_SENSITIVE_FILENAMES: FrozenSet[str] = frozenset({
+    ".env",
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    ".bashrc",
+    ".bash_profile",
+    ".zshrc",
+    ".zprofile",
+    ".profile",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "authorized_keys",
+    "known_hosts",
+    "credentials",
+})
+_SENSITIVE_SUFFIXES = (".pem", ".key", ".p12", ".pfx", ".kdbx", ".jks")
+_BLOCKED_OUTPUT_EXTENSIONS: FrozenSet[str] = frozenset({
+    "sh", "bash", "zsh", "ps1", "bat", "cmd", "com", "exe", "msi", "dll",
+    "so", "dylib", "py", "pyc", "pyo", "js", "mjs", "cjs", "ts", "jsx",
+    "tsx", "php", "rb", "pl", "lua", "jar", "war", "ear", "app", "scr",
+})
 
 mcp = FastMCP("TweekIT")
 
@@ -161,6 +233,37 @@ AI_PROVIDER_PROFILES: Dict[str, Dict[str, Any]] = {
 }
 
 
+class _NormalizeMcpPathMiddleware:
+    """Normalize trailing-slash `/mcp/` requests in-place and honor `X-Forwarded-Proto`.
+
+    Avoids Starlette 307 redirects on `POST /mcp/` (which drop TLS behind reverse
+    proxies or fail MCP clients that refuse redirects on `initialize`).
+    """
+
+    def __init__(self, app: Any) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Dict[str, Any], receive: Any, send: Any) -> None:
+        if scope.get("type") == "http":
+            mutated: Optional[Dict[str, Any]] = None
+            path = scope.get("path", "")
+            if path == "/mcp/":
+                mutated = dict(scope)
+                mutated["path"] = "/mcp"
+                mutated["raw_path"] = b"/mcp"
+            for raw_k, raw_v in scope.get("headers") or ():
+                if raw_k.lower() == b"x-forwarded-proto":
+                    proto = raw_v.decode("latin-1", errors="ignore").split(",", 1)[0].strip().lower()
+                    if proto in {"https", "http"} and proto != (mutated or scope).get("scheme"):
+                        if mutated is None:
+                            mutated = dict(scope)
+                        mutated["scheme"] = proto
+                    break
+            if mutated is not None:
+                scope = mutated
+        await self.app(scope, receive, send)
+
+
 def _extract_extension_from_input(filename_or_ext: str) -> str:
     """Extract and normalize a file extension from a filename, URL, path, or bare extension."""
     cleaned = (filename_or_ext or "").strip()
@@ -225,8 +328,7 @@ def preflight_check(filename_or_ext: str, target_provider: str = "default") -> D
     """Alias for recommend_ai_format used for preflight validation in AI Hub workflows."""
     return recommend_ai_format(filename_or_ext, target_provider=target_provider)
 
-# Remapping table so files with the alternate versions of known filename extensions aren't rejected.
-# (Though I think MediaRich already supports these, so I don't know why this is here....)
+
 _EXTENSION_ALIASES: Dict[str, str] = {
     "jpeg": "jpg",
     "jpe": "jpg",
@@ -242,42 +344,368 @@ def _normalize_extension(ext: str) -> str:
     return _EXTENSION_ALIASES.get(normalized, normalized)
 
 
+def _validate_format_token(value: str, field_name: str = "format") -> str:
+    cleaned = _normalize_extension(value)
+    if not cleaned or not _FORMAT_TOKEN_RE.fullmatch(cleaned):
+        raise ValueError(f"Invalid {field_name}: must be 1-16 alphanumeric characters.")
+    return cleaned
+
+
+def _validate_doc_id(doc_id: str) -> str:
+    cleaned = (doc_id or "").strip()
+    if not cleaned or not _DOC_ID_RE.fullmatch(cleaned):
+        raise ValueError("Invalid docId: must be 1-128 characters matching [A-Za-z0-9_-].")
+    return cleaned
+
+
 def _resolve_extension(url: str, override: Optional[str], content_type: Optional[str]) -> str:
     """Determine the best input extension for a downloaded file."""
     if override:
         candidate = _normalize_extension(override)
-        if candidate:
+        if candidate and _FORMAT_TOKEN_RE.fullmatch(candidate):
             return candidate
 
     path_ext = _normalize_extension(Path(urlparse(url).path).suffix)
-    if path_ext:
+    if path_ext and _FORMAT_TOKEN_RE.fullmatch(path_ext):
         return path_ext
 
     if content_type:
         mime = content_type.split(";", 1)[0].strip()
         guessed = mimetypes.guess_extension(mime) or ""
         normalized = _normalize_extension(guessed)
-        if normalized:
+        if normalized and _FORMAT_TOKEN_RE.fullmatch(normalized):
             return normalized
         if "/" in mime:
             subtype = _normalize_extension(mime.split("/")[-1])
-            if subtype:
+            if subtype and _FORMAT_TOKEN_RE.fullmatch(subtype):
                 return subtype
 
     return "bin"
 
 
-def _resolve_credentials(provided_key: Optional[str], provided_secret: Optional[str]) -> tuple[str, str]:
-    api_key = (provided_key or os.getenv("TWEEKIT_API_KEY") or "").strip()
-    api_secret = (provided_secret or os.getenv("TWEEKIT_API_SECRET") or "").strip()
+def _extract_bearer(auth_header: Optional[str]) -> str:
+    if not auth_header:
+        return ""
+    value = auth_header.strip()
+    if value.lower().startswith("bearer "):
+        return value[7:].strip()
+    return ""
+
+
+def _resolve_credentials(
+    provided_key: Optional[str] = None,
+    provided_secret: Optional[str] = None,
+) -> tuple[str, str]:
+    """Resolve TweekIT API credentials from SDK args, MCP HTTP headers, or environment variables."""
+    req_headers = get_http_headers(
+        include={"apikey", "apisecret", "x-api-key", "x-api-secret", "authorization"}
+    )
+    header_key = (
+        req_headers.get("apikey")
+        or req_headers.get("x-api-key")
+        or _extract_bearer(req_headers.get("authorization"))
+        or ""
+    ).strip()
+    header_secret = (
+        req_headers.get("apisecret")
+        or req_headers.get("x-api-secret")
+        or ""
+    ).strip()
+
+    api_key = (provided_key or header_key or os.getenv("TWEEKIT_API_KEY") or "").strip()
+    api_secret = (provided_secret or header_secret or os.getenv("TWEEKIT_API_SECRET") or "").strip()
     missing = []
     if not api_key:
         missing.append("TWEEKIT_API_KEY")
     if not api_secret:
         missing.append("TWEEKIT_API_SECRET")
     if missing:
-        raise RuntimeError(f"Missing TweekIT credentials: {', '.join(missing)}")
+        raise RuntimeError(
+            f"Missing TweekIT credentials ({', '.join(missing)}). "
+            "Configure TWEEKIT_API_KEY/TWEEKIT_API_SECRET in environment variables or HTTP ApiKey/ApiSecret headers."
+        )
     return api_key, api_secret
+
+
+def _is_public_ip(raw_ip: str) -> bool:
+    """Return True only when `raw_ip` is a globally routable unicast IP address."""
+    try:
+        ip = ipaddress.ip_address(raw_ip)
+    except ValueError:
+        return False
+
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+
+    if (
+        not ip.is_global
+        or ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    ):
+        return False
+
+    if isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT_NETWORK:
+        return False
+
+    return True
+
+
+async def _resolve_host_ips(hostname: str, port: int) -> List[str]:
+    """Resolve all A/AAAA socket addresses for `hostname` asynchronously."""
+    loop = asyncio.get_running_loop()
+    infos = await loop.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+    ips: List[str] = []
+    for info in infos:
+        sockaddr = info[4]
+        if sockaddr and isinstance(sockaddr[0], str):
+            addr = sockaddr[0].split("%", 1)[0]
+            if addr not in ips:
+                ips.append(addr)
+    return ips
+
+
+async def _validate_public_https_url(url: str) -> tuple[str, str]:
+    """Validate that `url` uses HTTPS and resolves exclusively to public, non-private IPs."""
+    parsed = urlparse((url or "").strip())
+    if parsed.scheme.lower() != "https":
+        raise ValueError("Unsupported URL scheme: only 'https://' URLs are permitted.")
+    if parsed.username or parsed.password:
+        raise ValueError("URLs containing embedded userinfo credentials are not permitted.")
+    hostname = (parsed.hostname or "").strip().rstrip(".").lower()
+    if not hostname:
+        raise ValueError("URL is missing a valid hostname.")
+    if hostname in _BLOCKED_HOSTNAMES or hostname.endswith(_BLOCKED_HOST_SUFFIXES):
+        raise ValueError(f"Blocked internal or local hostname: '{hostname}'.")
+
+    try:
+        literal_ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        literal_ip = None
+
+    if literal_ip is not None:
+        if not _is_public_ip(str(literal_ip)):
+            raise ValueError(f"Blocked non-public IP address: '{hostname}'.")
+        return url.strip(), hostname
+
+    port = parsed.port or 443
+    try:
+        resolved_ips = await _resolve_host_ips(hostname, port)
+    except socket.gaierror as exc:
+        raise ValueError(f"Unable to resolve hostname '{hostname}': {exc}") from exc
+
+    if not resolved_ips:
+        raise ValueError(f"Hostname '{hostname}' did not resolve to any IP addresses.")
+    for ip_str in resolved_ips:
+        if not _is_public_ip(ip_str):
+            raise ValueError(f"Hostname '{hostname}' resolves to a blocked non-public IP address.")
+
+    return url.strip(), hostname
+
+
+def _sanitize_fetch_headers(
+    fetch_headers: Optional[Dict[str, str]],
+    *,
+    hostname: str,
+    allow_auth_headers: bool = False,
+) -> Dict[str, str]:
+    """Validate optional outbound fetch headers against a strict allowlist."""
+    sanitized: Dict[str, str] = {
+        "User-Agent": f"tweekit-mcp/{SERVER_VERSION} (+https://github.com/equilibrium-team/tweekit-mcp)"
+    }
+    if not fetch_headers:
+        return sanitized
+    if len(fetch_headers) > 16:
+        raise ValueError("Too many fetchHeaders supplied (maximum 16).")
+
+    allowed_auth_hosts = {
+        h.strip().lower()
+        for h in os.getenv("TWEEKIT_ALLOWED_AUTH_HOSTS", "").split(",")
+        if h.strip()
+    }
+
+    for raw_k, raw_v in fetch_headers.items():
+        key = str(raw_k).strip()
+        val = str(raw_v).strip()
+        if not key or "\r" in key or "\n" in key or "\r" in val or "\n" in val:
+            raise ValueError("Invalid control characters in fetchHeaders.")
+        if len(val) > 2048:
+            raise ValueError(f"Header '{key}' exceeds maximum length.")
+        lower_k = key.lower()
+        if lower_k == "authorization":
+            if not (allow_auth_headers or hostname in allowed_auth_hosts):
+                raise ValueError(
+                    "Forwarding 'Authorization' in fetchHeaders is disabled by default to prevent credential "
+                    "exfiltration. Add the target domain to TWEEKIT_ALLOWED_AUTH_HOSTS if required."
+                )
+            sanitized["Authorization"] = val
+        elif lower_k in _SAFE_FETCH_HEADERS:
+            sanitized[key] = val
+        else:
+            raise ValueError(
+                f"Disallowed fetchHeader '{key}'. Allowed headers: {', '.join(sorted(_SAFE_FETCH_HEADERS))}."
+            )
+    return sanitized
+
+
+async def _safe_fetch_remote(
+    url: str,
+    *,
+    fetch_headers: Optional[Dict[str, str]] = None,
+    allow_auth_headers: bool = False,
+    max_bytes: Optional[int] = None,
+) -> tuple[bytes, str, int, str]:
+    """Fetch a remote HTTPS resource with SSRF IP validation on every hop and a streaming size cap."""
+    byte_limit = max_bytes or int(os.getenv("TWEEKIT_MAX_DOWNLOAD_BYTES", str(DEFAULT_MAX_DOWNLOAD_BYTES)))
+    current_url, initial_host = await _validate_public_https_url(url)
+    req_headers = _sanitize_fetch_headers(
+        fetch_headers,
+        hostname=initial_host,
+        allow_auth_headers=allow_auth_headers,
+    )
+    initial_origin = (urlparse(current_url).scheme.lower(), initial_host, urlparse(current_url).port or 443)
+
+    timeout = httpx.Timeout(20.0, read=60.0)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        for hop in range(MAX_REDIRECT_HOPS + 1):
+            if hop > 0:
+                current_url, hop_host = await _validate_public_https_url(current_url)
+                hop_origin = (urlparse(current_url).scheme.lower(), hop_host, urlparse(current_url).port or 443)
+                if hop_origin != initial_origin:
+                    req_headers.pop("Authorization", None)
+
+            async with client.stream("GET", current_url, headers=req_headers) as response:
+                if response.status_code in {301, 302, 303, 307, 308}:
+                    if hop >= MAX_REDIRECT_HOPS:
+                        raise ValueError(f"Exceeded maximum redirect limit ({MAX_REDIRECT_HOPS}).")
+                    location = response.headers.get("location")
+                    if not location:
+                        raise ValueError("Redirect response missing Location header.")
+                    current_url = urljoin(current_url, location)
+                    continue
+
+                response.raise_for_status()
+
+                content_length = response.headers.get("content-length")
+                if content_length:
+                    try:
+                        if int(content_length) > byte_limit:
+                            raise ValueError(f"Remote resource exceeds maximum allowed size ({byte_limit} bytes).")
+                    except ValueError as exc:
+                        if "exceeds maximum" in str(exc):
+                            raise
+
+                buf = bytearray()
+                async for chunk in response.aiter_bytes():
+                    buf.extend(chunk)
+                    if len(buf) > byte_limit:
+                        raise ValueError(f"Remote resource exceeds maximum allowed size ({byte_limit} bytes).")
+
+                content_type = response.headers.get("content-type") or ""
+                return bytes(buf), content_type, response.status_code, current_url
+
+    raise ValueError(f"Exceeded maximum redirect limit ({MAX_REDIRECT_HOPS}).")
+
+
+def _is_local_files_enabled() -> bool:
+    """Local file access is opt-in only (`TWEEKIT_ALLOW_LOCAL_FILES=1`) and disabled over HTTP."""
+    if _ACTIVE_TRANSPORT == "streamable-http":
+        return False
+    return os.getenv("TWEEKIT_ALLOW_LOCAL_FILES", "0").strip().lower() in {"1", "true", "yes"}
+
+
+def _get_allowed_local_dirs() -> List[Path]:
+    """Return canonical workspace directories permitted for local file reads and writes."""
+    raw = os.getenv("TWEEKIT_ALLOWED_DIRS", "").strip()
+    candidates = [p.strip() for p in raw.split(os.pathsep) if p.strip()] if raw else [str(Path.cwd())]
+    allowed: List[Path] = []
+    for entry in candidates:
+        resolved = Path(entry).expanduser().resolve()
+        if resolved == Path(resolved.anchor):
+            raise ValueError("TWEEKIT_ALLOWED_DIRS may not contain the filesystem root directory.")
+        if resolved.is_dir():
+            allowed.append(resolved)
+    if not allowed:
+        raise ValueError("No valid workspace directory configured in TWEEKIT_ALLOWED_DIRS.")
+    return allowed
+
+
+def _is_sensitive_path(path: Path) -> bool:
+    """Return True if `path` touches sensitive dotfile, credential, or shell-startup locations."""
+    lower_name = path.name.lower()
+    if lower_name in _SENSITIVE_FILENAMES or lower_name.startswith(".env."):
+        return True
+    if lower_name.endswith(_SENSITIVE_SUFFIXES):
+        return True
+    for part in path.parts:
+        if part.lower() in _SENSITIVE_PATH_SEGMENTS:
+            return True
+    return False
+
+
+def _validate_local_read_path(file_path: str, allowed_dirs: List[Path]) -> Path:
+    raw = Path(file_path).expanduser()
+    if raw.is_symlink():
+        raise ValueError("Symbolic links are not permitted for input file_path.")
+    try:
+        resolved = raw.resolve(strict=True)
+    except FileNotFoundError as exc:
+        raise ValueError(f"Input file not found: '{file_path}'") from exc
+
+    if not resolved.is_file():
+        raise ValueError(f"Input path is not a regular file: '{file_path}'")
+    if not any(resolved.is_relative_to(root) for root in allowed_dirs):
+        raise ValueError(
+            "Input file_path is outside the allowed workspace directory. "
+            "Configure TWEEKIT_ALLOWED_DIRS to permit this directory."
+        )
+    if _is_sensitive_path(resolved):
+        raise ValueError("Reading sensitive credential, configuration, or dotfile paths is prohibited.")
+
+    max_bytes = int(os.getenv("TWEEKIT_MAX_LOCAL_FILE_BYTES", str(DEFAULT_MAX_LOCAL_FILE_BYTES)))
+    size = resolved.stat().st_size
+    if size > max_bytes:
+        raise ValueError(f"Input file exceeds maximum allowed size ({max_bytes} bytes).")
+    return resolved
+
+
+def _validate_local_write_path(output_path: str, allowed_dirs: List[Path]) -> Path:
+    raw = Path(output_path).expanduser()
+    if raw.exists() and raw.is_symlink():
+        raise ValueError("Symbolic links are not permitted for output_path.")
+
+    # Walk up to nearest existing parent to resolve symlinks safely before creating subdirectories.
+    probe = raw.parent
+    missing_parts: List[str] = []
+    while not probe.exists():
+        if probe == probe.parent:
+            break
+        missing_parts.append(probe.name)
+        probe = probe.parent
+    if probe.is_symlink():
+        raise ValueError("Symbolic links are not permitted in output_path parent directories.")
+
+    resolved_parent = probe.resolve(strict=True)
+    for part in reversed(missing_parts):
+        resolved_parent = resolved_parent / part
+    resolved_dest = resolved_parent / raw.name
+
+    if not any(resolved_dest.is_relative_to(root) for root in allowed_dirs):
+        raise ValueError(
+            "Output path is outside the allowed workspace directory. "
+            "Configure TWEEKIT_ALLOWED_DIRS to permit this directory."
+        )
+    if _is_sensitive_path(resolved_dest):
+        raise ValueError("Writing to sensitive credential, configuration, or dotfile paths is prohibited.")
+
+    out_ext = _normalize_extension(resolved_dest.suffix)
+    if not out_ext or out_ext in _BLOCKED_OUTPUT_EXTENSIONS or out_ext not in EXTENSIVE_SUPPORTED_EXTENSIONS:
+        raise ValueError(f"Disallowed or unsafe output file extension: '.{out_ext or ''}'.")
+
+    return resolved_dest
 
 
 def _extract_error_details(response: Optional[httpx.Response]) -> str:
@@ -299,11 +727,12 @@ def _extract_error_details(response: Optional[httpx.Response]) -> str:
         if isinstance(data, list):
             return json.dumps(data)
     except Exception:
-        pass
+        logger.debug("Response body was not JSON when extracting error details.")
     text = response.text.strip() if response.text else ""
     if hints and not text:
         text = json.dumps(hints)
     return text
+
 
 @mcp.resource("config://tweekit-version")
 async def version() -> str:
@@ -321,16 +750,41 @@ async def version() -> str:
         return f"unavailable (http {getattr(e.response, 'status_code', 'unknown')}{': ' + details if details else ''})"
     except httpx.RequestError as e:
         logger.error("Network error checking TweekIT version: %s", e)
-        return f"unavailable (network error: {e})"
-    except Exception as e:
+        return "unavailable (network error)"
+    except Exception:
         logger.exception("Unexpected error checking TweekIT version")
-        return f"unavailable (unexpected error: {e})"
+        return "unavailable (unexpected error)"
 
 
 @mcp.resource("config://tweekit-mcp-version")
 async def mcp_version() -> str:
     """Return the TweekIT MCP server version."""
     return SERVER_VERSION
+
+
+async def _doctype_impl(apiKey: str, apiSecret: str, extension: str = "*") -> Dict[str, Any]:
+    cleaned_ext = "*" if (extension or "").strip() in {"", "*"} else _validate_format_token(extension, "extension")
+    url = f"{BASE_URL}doctype"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            response = await client.get(
+                url,
+                headers={"ApiKey": apiKey, "ApiSecret": apiSecret},
+                params={"extension": cleaned_ext},
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data if isinstance(data, dict) else {"result": data}
+        except httpx.HTTPStatusError as e:
+            logger.warning("HTTP error fetching supported file formats given '%s': %s", cleaned_ext, e)
+            return {"error": f"Failed to fetch supported formats. Status: {e.response.status_code}"}
+        except httpx.RequestError as e:
+            logger.error("Network error fetching supported file formats given '%s': %s", cleaned_ext, e)
+            return {"error": "Network error communicating with TweekIT."}
+        except Exception:
+            logger.exception("Unexpected error in doctype")
+            return {"error": "An unexpected internal error occurred."}
+
 
 @mcp.tool(
     annotations=ToolAnnotations(
@@ -342,47 +796,19 @@ async def mcp_version() -> str:
     )
 )
 async def doctype(
-    apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to the TWEEKIT_API_KEY environment variable when omitted.")] = None,
-    apiSecret: Annotated[Optional[str], Field(description="TweekIT API secret paired with the apiKey. Defaults to the TWEEKIT_API_SECRET environment variable when omitted.")] = None,
     extension: Annotated[str, Field(description="File extension to inspect; use '*' to list all supported inputs.")] = "*",
 ) -> Dict[str, Any]:
-    """
-    Retrieve a list of supported file formats or map a file extension to its document type.
+    """Retrieve supported file formats or map a file extension to its TweekIT document type.
 
-    Args:
-        apiKey (str): The API key for authentication. Falls back to TWEEKIT_API_KEY when omitted.
-        apiSecret (str): The API secret for authentication. Falls back to TWEEKIT_API_SECRET when omitted.
-        extension (str): The file extension to query (e.g., 'jpg', 'pdf') or leave off or use '*' to return all supported input formats.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the supported file formats or an error message.
+    Authentication is read exclusively from environment variables (`TWEEKIT_API_KEY` /
+    `TWEEKIT_API_SECRET`) or MCP HTTP request headers (`ApiKey` / `ApiSecret`) — never place
+    API secrets in prompts or tool arguments.
     """
     try:
-        key, secret = _resolve_credentials(apiKey, apiSecret)
-    except RuntimeError as exc:
+        key, secret = _resolve_credentials()
+        return await _doctype_impl(apiKey=key, apiSecret=secret, extension=extension)
+    except (RuntimeError, ValueError) as exc:
         return {"error": str(exc)}
-
-    url = f"{BASE_URL}doctype"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            response = await client.get(url, headers={"ApiKey": key, "ApiSecret": secret}, params={"extension": extension})
-            response.raise_for_status()  # Raise an exception for HTTP errors
-
-            data = response.json()
-            if isinstance(data, dict):
-                return data
-            else:
-                return {"result": data}
-
-        except httpx.HTTPStatusError as e:
-            logger.warning("HTTP error fetching supported file formats given '%s': %s", extension, e)
-            return {"error": f"Failed to fetch user data. Status: {e.response.status_code}"}
-        except httpx.RequestError as e:
-            logger.error("Network error fetching supported file formats given '%s': %s", extension, e)
-            return {"error": f"Network error: {e}"}
-        except Exception as e:
-            logger.exception("An unexpected error occurred in doctype: %s", e)
-            return {"error": f"An unexpected error occurred: {e}"}
 
 
 @mcp.tool(
@@ -398,12 +824,7 @@ async def preflight(
     filename_or_ext: Annotated[str, Field(description="Input filename, path, or extension to validate (e.g., 'scan.psd', 'report.xls', 'dwg').")],
     target_provider: Annotated[str, Field(description="Target AI provider/hub profile ('claude', 'openai', 'gemini', 'mistral', 'grok', 'deepseek', 'openrouter', or 'default').")] = "default",
 ) -> Dict[str, Any]:
-    """Validate whether a file format is supported by TweekIT and recommend the optimal AI-ready output format.
-
-    Designed for AI Hub preflight checks (such as Maitrix AI Hub, Claude, OpenAI, and Gemini pipelines)
-    to determine whether an incoming file needs TweekIT normalization and which output format (`pdf`, `png`,
-    `webp`, `txt`) and parameters to use.
-    """
+    """Validate whether a file format is supported by TweekIT and recommend the optimal AI-ready output format."""
     return recommend_ai_format(filename_or_ext, target_provider=target_provider)
 
 
@@ -422,44 +843,54 @@ async def _convert_impl(
     y2: int = 0,
     page: int = 1,
     alpha: bool = True,
-    bgColor: str = ""
+    bgColor: str = "",
 ) -> Any:
+    try:
+        safe_inext = _validate_format_token(inext, "inext")
+        safe_outfmt = _validate_format_token(outfmt, "outfmt")
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    if not blob or len(blob) > DEFAULT_MAX_BLOB_CHARS:
+        return {"error": "Invalid or oversized base64 payload (`blob`)."}
+
     url = BASE_URL
-    # Convert bgcolor from hex string (e.g., '#FFFFFF' or 'FFFFFF') to integer
     bg = 0
     if bgColor:
-        hexstr = bgColor.lstrip('#')
+        hexstr = bgColor.lstrip("#")
         try:
             bg = int(hexstr, 16)
         except ValueError:
-            bg = 0  # fallback to black if invalid
+            bg = 0
 
-    # Call TweekIT
     async with httpx.AsyncClient(default_encoding="ascii", timeout=60.0) as client:
         try:
             client.headers["ApiKey"] = apiKey
             client.headers["ApiSecret"] = apiSecret
-            response = await client.post(url, json={
-                "Fmt": outfmt,
-                "Width": width,
-                "Height": height,
-                "X1": x1,
-                "Y1": y1,
-                "X2": x2,
-                "Y2": y2,
-                "Bg": bg,
-                "Alpha": alpha,
-                "Page": page,
-                "NoRasterize": noRasterize,
-                "DocDataType": inext,
-                "DocData": blob
-            })
-            response.raise_for_status()  # Raise an exception for HTTP errors
+            response = await client.post(
+                url,
+                json={
+                    "Fmt": safe_outfmt,
+                    "Width": width,
+                    "Height": height,
+                    "X1": x1,
+                    "Y1": y1,
+                    "X2": x2,
+                    "Y2": y2,
+                    "Bg": bg,
+                    "Alpha": alpha,
+                    "Page": page,
+                    "NoRasterize": noRasterize,
+                    "DocDataType": safe_inext,
+                    "DocData": blob,
+                },
+            )
+            response.raise_for_status()
 
             content_type = response.headers.get("content-type") or ""
             lowered_ct = content_type.lower()
             if lowered_ct.startswith("image/"):
-                image_format = lowered_ct.split("/")[-1]
+                image_format = lowered_ct.split("/")[-1].split(";")[0].strip()
                 return Image(data=response.content, format=image_format)
             if lowered_ct == "application/pdf":
                 return File(data=response.content, format="pdf")
@@ -467,12 +898,10 @@ async def _convert_impl(
                 try:
                     return response.json()
                 except Exception:
-                    pass
+                    logger.debug("Failed to parse JSON body from conversion response.")
             if lowered_ct.startswith("application/") or lowered_ct == "application/octet-stream":
-                ext = outfmt.lower().strip(".") or "bin"
-                return File(data=response.content, format=ext)
+                return File(data=response.content, format=safe_outfmt)
 
-            # Attempt to surface TweekIT error payloads even if content type is unexpected
             error_details = _extract_error_details(response)
             if error_details:
                 return {"error": error_details}
@@ -487,34 +916,18 @@ async def _convert_impl(
             }
             if message:
                 error_payload["details"] = message
-            if e.request is not None and (e.request.headers.get("content-type") or "").startswith("application/json"):
-                payload_bytes = None
-                try:
-                    payload_bytes = e.request.content  # type: ignore[attr-defined]
-                except AttributeError:
-                    try:
-                        payload_bytes = e.request.read()
-                    except Exception:
-                        payload_bytes = None
-                payload_json = None
-                if payload_bytes:
-                    try:
-                        payload_json = json.loads(payload_bytes.decode("utf-8"))
-                    except Exception:
-                        payload_json = None
-                if isinstance(payload_json, dict):
-                    error_payload["tweekitPayload"] = {
-                        "DocDataType": payload_json.get("DocDataType"),
-                        "Fmt": payload_json.get("Fmt"),
-                    }
+            error_payload["tweekitPayload"] = {
+                "DocDataType": safe_inext,
+                "Fmt": safe_outfmt,
+            }
             logger.warning("TweekIT convert error (%s): %s", status, message or str(e))
             return error_payload
         except httpx.RequestError as e:
-            logger.error("Network error fetching document from %s: %s", url, e)
+            logger.error("Network error calling TweekIT convert: %s", e)
             return {"error": "Network error"}
-        except Exception as e:
-            logger.exception("An unexpected error occurred in _convert_impl: %s", e)
-            return {"error": f"An unexpected error occurred: {e}"}
+        except Exception:
+            logger.exception("Unexpected error in _convert_impl")
+            return {"error": "An unexpected internal error occurred."}
 
 
 @mcp.tool(
@@ -530,8 +943,6 @@ async def convert(
     inext: Annotated[str, Field(description="Input file extension (e.g., pdf, docx, png).")],
     outfmt: Annotated[str, Field(description="Requested output format to send as Fmt.")],
     blob: Annotated[str, Field(description="Base64 encoded document payload (DocData).")],
-    apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to the TWEEKIT_API_KEY environment variable when omitted.")] = None,
-    apiSecret: Annotated[Optional[str], Field(description="TweekIT API secret paired with the apiKey. Defaults to the TWEEKIT_API_SECRET environment variable when omitted.")] = None,
     noRasterize: Annotated[bool, Field(description="Forward to TweekIT to disable rasterization when supported.")] = False,
     width: Annotated[int, Field(description="Optional pixel width for the converted output.")] = 0,
     height: Annotated[int, Field(description="Optional pixel height for the converted output.")] = 0,
@@ -543,34 +954,13 @@ async def convert(
     alpha: Annotated[bool, Field(description="Preserve alpha transparency when producing raster formats.")] = True,
     bgColor: Annotated[str, Field(description="Background color (hex RGB) to composite behind transparent pixels.")] = "",
 ) -> Any:
-    """Convert an uploaded document payload with TweekIT.
+    """Convert a base64-encoded document payload with TweekIT.
 
-    The file must already be base64 encoded (see `blob`). The conversion can be
-    resized and cropped by providing optional geometry parameters. For raster
-    outputs, set `alpha`/`bgColor` to control transparency handling.
-
-    Args:
-        inext: Source file extension such as `pdf`, `docx`, or `png`.
-        outfmt: Desired output format (`Fmt` in the API body).
-        blob: Base64 encoded document payload (`DocData`).
-        apiKey: TweekIT API key (`ApiKey` header). Falls back to `TWEEKIT_API_KEY` env var.
-        apiSecret: TweekIT API secret (`ApiSecret` header). Falls back to `TWEEKIT_API_SECRET` env var.
-        noRasterize: Forwarded to TweekIT to skip rasterization when possible.
-        width: Optional pixel width to request in the output.
-        height: Optional pixel height to request in the output.
-        x1: Left crop coordinate in source pixels.
-        y1: Top crop coordinate in source pixels.
-        x2: Right crop coordinate in source pixels.
-        y2: Bottom crop coordinate in source pixels.
-        page: Page number to extract for multipage inputs.
-        alpha: Whether the output should preserve alpha transparency.
-        bgColor: Background color to composite behind transparent pixels.
-
-    Returns:
-        A FastMCP `Image` or `File` payload, or an error description.
+    Credentials are read securely from `TWEEKIT_API_KEY` / `TWEEKIT_API_SECRET` environment
+    variables or HTTP `ApiKey` / `ApiSecret` headers. Never pass secrets in prompts.
     """
     try:
-        key, secret = _resolve_credentials(apiKey, apiSecret)
+        key, secret = _resolve_credentials()
     except RuntimeError as exc:
         return {"error": str(exc)}
 
@@ -610,40 +1000,40 @@ async def _convert_url_impl(
     alpha: bool = True,
     bgColor: str = "",
     fetchHeaders: Optional[Dict[str, str]] = None,
+    *,
+    allow_auth_headers: bool = False,
 ) -> Any:
-    """Download a remote document and convert it via TweekIT."""
-
-    headers = None
-    if fetchHeaders:
-        headers = {str(k): str(v) for k, v in fetchHeaders.items()}
-
-    timeout = httpx.Timeout(20.0, read=60.0)
+    """Download a validated public HTTPS document and convert it via TweekIT."""
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
+        raw_bytes, content_type, _, final_url = await _safe_fetch_remote(
+            url,
+            fetch_headers=fetchHeaders,
+            allow_auth_headers=allow_auth_headers,
+        )
+    except ValueError as exc:
+        return {"error": str(exc)}
     except httpx.HTTPStatusError as e:
         status = getattr(e.response, "status_code", "unknown")
         message = _extract_error_details(e.response)
-        error_payload = {
+        error_payload: Dict[str, Any] = {
             "error": f"Failed to download remote content. Status: {status}",
         }
         if message:
             error_payload["details"] = message
-        logger.warning("HTTP error downloading '%s': status=%s details=%s", url, status, message)
+        logger.warning("HTTP error downloading '%s': status=%s", url, status)
         return error_payload
     except httpx.RequestError as e:
         logger.error("Network error downloading '%s': %s", url, e)
-        return {"error": f"Network error downloading remote content: {e}"}
-    except Exception as e:
+        return {"error": "Network error downloading remote content."}
+    except Exception:
         logger.exception("Unexpected error downloading '%s'", url)
-        return {"error": f"Unexpected error downloading remote content: {e}"}
+        return {"error": "Unexpected error downloading remote content."}
 
-    if not response.content:
+    if not raw_bytes:
         return {"error": "Downloaded content was empty."}
 
-    resolved_inext = _resolve_extension(url, inext, response.headers.get("content-type"))
-    blob = base64.b64encode(response.content).decode("ascii")
+    resolved_inext = _resolve_extension(final_url, inext, content_type)
+    blob = base64.b64encode(raw_bytes).decode("ascii")
 
     return await _convert_impl(
         apiKey=apiKey,
@@ -674,10 +1064,8 @@ async def _convert_url_impl(
     )
 )
 async def convert_url(
-    url: Annotated[str, Field(description="Direct download URL for the source document or image.")],
+    url: Annotated[str, Field(description="Public HTTPS download URL for the source document or image.")],
     outfmt: Annotated[str, Field(description="Requested output format to send as Fmt.")],
-    apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to the TWEEKIT_API_KEY environment variable when omitted.")] = None,
-    apiSecret: Annotated[Optional[str], Field(description="TweekIT API secret paired with the apiKey. Defaults to the TWEEKIT_API_SECRET environment variable when omitted.")] = None,
     inext: Annotated[Optional[str], Field(description="Override for the detected input extension (e.g., pdf).")] = None,
     noRasterize: Annotated[bool, Field(description="Forward to TweekIT to disable rasterization when supported.")] = False,
     width: Annotated[int, Field(description="Optional pixel width for the converted output.")] = 0,
@@ -689,38 +1077,11 @@ async def convert_url(
     page: Annotated[int, Field(description="Page number to convert for multi-page inputs.")] = 1,
     alpha: Annotated[bool, Field(description="Preserve alpha transparency when producing raster formats.")] = True,
     bgColor: Annotated[str, Field(description="Background color (hex RGB) to composite behind transparent pixels.")] = "",
-    fetchHeaders: Annotated[Optional[Dict[str, str]], Field(description="Optional HTTP headers to include when downloading the URL.")] = None,
+    fetchHeaders: Annotated[Optional[Dict[str, str]], Field(description="Optional allowlisted non-credential HTTP headers (Accept, Accept-Language, Cache-Control, Range, User-Agent).")] = None,
 ) -> Any:
-    """Download a remote file and convert it with TweekIT in one step.
-
-    This helper first fetches `url`, infers the input extension when possible,
-    and then forwards the bytes to `convert`. Supply `fetchHeaders` when the
-    remote resource needs authentication or custom headers.
-
-    Args:
-        url: Direct download URL for the source document or image.
-        outfmt: Desired output format (`Fmt`).
-        apiKey: TweekIT API key (`ApiKey` header). Falls back to `TWEEKIT_API_KEY` env var.
-        apiSecret: TweekIT API secret (`ApiSecret` header). Falls back to `TWEEKIT_API_SECRET` env var.
-        inext: Optional override for the source extension if it cannot be
-            detected from the URL or response headers.
-        noRasterize: Forwarded to TweekIT to skip rasterization when possible.
-        width: Optional pixel width to request in the output.
-        height: Optional pixel height to request in the output.
-        x1: Left crop coordinate in source pixels.
-        y1: Top crop coordinate in source pixels.
-        x2: Right crop coordinate in source pixels.
-        y2: Bottom crop coordinate in source pixels.
-        page: Page number to extract for multipage inputs.
-        alpha: Whether the output should preserve alpha transparency.
-        bgColor: Background color to composite behind transparent pixels.
-        fetchHeaders: Optional mapping of HTTP headers to include when fetching.
-
-    Returns:
-        A FastMCP `Image` or `File` payload, or an error description.
-    """
+    """Download a public HTTPS file (with SSRF, redirect, and size protections) and convert it via TweekIT."""
     try:
-        key, secret = _resolve_credentials(apiKey, apiSecret)
+        key, secret = _resolve_credentials()
     except RuntimeError as exc:
         return {"error": str(exc)}
 
@@ -741,68 +1102,76 @@ async def convert_url(
         alpha=alpha,
         bgColor=bgColor,
         fetchHeaders=fetchHeaders,
+        allow_auth_headers=False,
     )
 
 
-@mcp.tool(
-    annotations=ToolAnnotations(
-        title="Convert Local File",
-        readOnlyHint=False,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=True,
-    )
-)
-async def convert_file(
-    file_path: Annotated[str, Field(description="Local filesystem path to the input document or image.")],
-    outfmt: Annotated[str, Field(description="Requested output format (e.g., pdf, png, webp, txt).")],
-    output_path: Annotated[Optional[str], Field(description="Optional local filesystem path to write the converted output directly to disk.")] = None,
-    apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to TWEEKIT_API_KEY when omitted.")] = None,
-    apiSecret: Annotated[Optional[str], Field(description="TweekIT API secret paired with the apiKey. Defaults to TWEEKIT_API_SECRET when omitted.")] = None,
-    inext: Annotated[Optional[str], Field(description="Override for the input file extension (inferred from file_path when omitted).")] = None,
-    noRasterize: Annotated[bool, Field(description="Forward to TweekIT to disable rasterization when supported.")] = False,
-    width: Annotated[int, Field(description="Optional pixel width for the converted output.")] = 0,
-    height: Annotated[int, Field(description="Optional pixel height for the converted output.")] = 0,
-    x1: Annotated[int, Field(description="Left crop coordinate in source pixels.")] = 0,
-    y1: Annotated[int, Field(description="Top crop coordinate in source pixels.")] = 0,
-    x2: Annotated[int, Field(description="Right crop coordinate in source pixels.")] = 0,
-    y2: Annotated[int, Field(description="Bottom crop coordinate in source pixels.")] = 0,
-    page: Annotated[int, Field(description="Page number to convert for multi-page inputs.")] = 1,
-    alpha: Annotated[bool, Field(description="Preserve alpha transparency when producing raster formats.")] = True,
-    bgColor: Annotated[str, Field(description="Background color (hex RGB) to composite behind transparent pixels.")] = "",
+async def _convert_file_impl(
+    apiKey: str,
+    apiSecret: str,
+    file_path: str,
+    outfmt: str,
+    output_path: Optional[str] = None,
+    inext: Optional[str] = None,
+    noRasterize: bool = False,
+    width: int = 0,
+    height: int = 0,
+    x1: int = 0,
+    y1: int = 0,
+    x2: int = 0,
+    y2: int = 0,
+    page: int = 1,
+    alpha: bool = True,
+    bgColor: str = "",
+    *,
+    enforce_sandbox: bool = True,
 ) -> Any:
-    """Convert a local file on disk with TweekIT without base64-encoding into the LLM prompt context.
-
-    When `output_path` is provided and conversion returns binary media (`Image` or `File`),
-    the converted bytes are written directly to `output_path` and a compact JSON receipt is returned.
-    Otherwise, returns a FastMCP `Image` or `File` payload directly.
-    """
-    if os.getenv("TWEEKIT_ALLOW_LOCAL_FILES", "1").strip().lower() in {"0", "false", "no"}:
-        return {"error": "Local filesystem conversion is disabled on this server (TWEEKIT_ALLOW_LOCAL_FILES=0)."}
-
-    try:
-        key, secret = _resolve_credentials(apiKey, apiSecret)
-    except RuntimeError as exc:
-        return {"error": str(exc)}
-
-    src = Path(file_path).expanduser()
-    if not src.exists() or not src.is_file():
-        return {"error": f"Input file not found: '{file_path}'"}
+    """Convert a local file on disk with opt-in workspace confinement and overwrite protection."""
+    resolved_dest: Optional[Path] = None
+    if enforce_sandbox:
+        if not _is_local_files_enabled():
+            return {
+                "error": (
+                    "Local filesystem conversion is disabled by default for security. "
+                    "Set TWEEKIT_ALLOW_LOCAL_FILES=1 and TWEEKIT_ALLOWED_DIRS=<workspace> on local stdio servers to opt in."
+                )
+            }
+        try:
+            allowed_dirs = _get_allowed_local_dirs()
+            src = _validate_local_read_path(file_path, allowed_dirs)
+            if output_path:
+                resolved_dest = _validate_local_write_path(output_path, allowed_dirs)
+                allow_overwrite = os.getenv("TWEEKIT_ALLOW_OVERWRITE", "0").strip().lower() in {"1", "true", "yes"}
+                if resolved_dest.exists() and not allow_overwrite:
+                    return {
+                        "error": (
+                            f"Refusing to overwrite existing file '{resolved_dest.name}'. "
+                            "Choose a new output_path or set TWEEKIT_ALLOW_OVERWRITE=1."
+                        )
+                    }
+        except ValueError as exc:
+            return {"error": str(exc)}
+    else:
+        src = Path(file_path).expanduser()
+        if not src.exists() or not src.is_file():
+            return {"error": f"Input file not found: '{file_path}'"}
+        if output_path:
+            resolved_dest = Path(output_path).expanduser().resolve()
 
     try:
         raw_bytes = src.read_bytes()
     except Exception as exc:
-        return {"error": f"Failed to read input file '{file_path}': {exc}"}
+        return {"error": f"Failed to read input file: {exc}"}
 
     if not raw_bytes:
-        return {"error": f"Input file '{file_path}' is empty."}
+        return {"error": "Input file is empty."}
 
     resolved_inext = _normalize_extension(inext or src.suffix) or "bin"
     blob = base64.b64encode(raw_bytes).decode("ascii")
 
     result = await _convert_impl(
-        apiKey=key,
-        apiSecret=secret,
+        apiKey=apiKey,
+        apiSecret=apiSecret,
         inext=resolved_inext,
         outfmt=outfmt,
         blob=blob,
@@ -818,23 +1187,119 @@ async def convert_file(
         bgColor=bgColor,
     )
 
-    if output_path and isinstance(result, (Image, File)) and getattr(result, "data", None) is not None:
-        dest = Path(output_path).expanduser()
+    if resolved_dest is not None and isinstance(result, (Image, File)) and getattr(result, "data", None) is not None:
+        allow_overwrite = (not enforce_sandbox) or (
+            os.getenv("TWEEKIT_ALLOW_OVERWRITE", "0").strip().lower() in {"1", "true", "yes"}
+        )
+        write_mode = "wb" if allow_overwrite else "xb"
         try:
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(result.data)  # type: ignore[arg-type]
+            resolved_dest.parent.mkdir(parents=True, exist_ok=True)
+            with open(resolved_dest, write_mode) as fp:
+                fp.write(result.data)  # type: ignore[arg-type]
             return {
                 "status": "ok",
                 "input_path": str(src.resolve()),
-                "output_path": str(dest.resolve()),
+                "output_path": str(resolved_dest),
                 "input_extension": resolved_inext,
                 "output_format": getattr(result, "format", outfmt),
                 "size_bytes": len(result.data),  # type: ignore[arg-type]
             }
+        except FileExistsError:
+            return {
+                "error": (
+                    f"Refusing to overwrite existing file '{resolved_dest.name}'. "
+                    "Choose a new output_path or set TWEEKIT_ALLOW_OVERWRITE=1."
+                )
+            }
         except Exception as exc:
-            return {"error": f"Failed to write output file '{output_path}': {exc}"}
+            return {"error": f"Failed to write output file: {exc}"}
 
     return result
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(
+        title="Convert Local Workspace File (Opt-In)",
+        readOnlyHint=False,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    )
+)
+async def convert_file(
+    file_path: Annotated[str, Field(description="Path within TWEEKIT_ALLOWED_DIRS to the input document or image (requires TWEEKIT_ALLOW_LOCAL_FILES=1).")],
+    outfmt: Annotated[str, Field(description="Requested output format (e.g., pdf, png, webp, txt).")],
+    output_path: Annotated[Optional[str], Field(description="Optional destination path within TWEEKIT_ALLOWED_DIRS (will not overwrite existing files unless TWEEKIT_ALLOW_OVERWRITE=1).")] = None,
+    inext: Annotated[Optional[str], Field(description="Override for the input file extension (inferred from file_path when omitted).")] = None,
+    noRasterize: Annotated[bool, Field(description="Forward to TweekIT to disable rasterization when supported.")] = False,
+    width: Annotated[int, Field(description="Optional pixel width for the converted output.")] = 0,
+    height: Annotated[int, Field(description="Optional pixel height for the converted output.")] = 0,
+    x1: Annotated[int, Field(description="Left crop coordinate in source pixels.")] = 0,
+    y1: Annotated[int, Field(description="Top crop coordinate in source pixels.")] = 0,
+    x2: Annotated[int, Field(description="Right crop coordinate in source pixels.")] = 0,
+    y2: Annotated[int, Field(description="Bottom crop coordinate in source pixels.")] = 0,
+    page: Annotated[int, Field(description="Page number to convert for multi-page inputs.")] = 1,
+    alpha: Annotated[bool, Field(description="Preserve alpha transparency when producing raster formats.")] = True,
+    bgColor: Annotated[str, Field(description="Background color (hex RGB) to composite behind transparent pixels.")] = "",
+) -> Any:
+    """Convert a local workspace file when explicitly opted in (`TWEEKIT_ALLOW_LOCAL_FILES=1`).
+
+    Disabled by default and strictly confined to `TWEEKIT_ALLOWED_DIRS` (default: current working
+    directory) with symlink resolution, dotfile/credential blocking, and non-overwrite protection.
+    """
+    if not _is_local_files_enabled():
+        return {
+            "error": (
+                "Local filesystem conversion is disabled by default (TWEEKIT_ALLOW_LOCAL_FILES=0). "
+                "Set TWEEKIT_ALLOW_LOCAL_FILES=1 and TWEEKIT_ALLOWED_DIRS=<workspace> on local stdio servers to opt in."
+            )
+        }
+
+    try:
+        key, secret = _resolve_credentials()
+    except RuntimeError as exc:
+        return {"error": str(exc)}
+
+    return await _convert_file_impl(
+        apiKey=key,
+        apiSecret=secret,
+        file_path=file_path,
+        outfmt=outfmt,
+        output_path=output_path,
+        inext=inext,
+        noRasterize=noRasterize,
+        width=width,
+        height=height,
+        x1=x1,
+        y1=y1,
+        x2=x2,
+        y2=y2,
+        page=page,
+        alpha=alpha,
+        bgColor=bgColor,
+        enforce_sandbox=True,
+    )
+
+
+async def _delete_document_impl(apiKey: str, apiSecret: str, docId: str) -> Dict[str, Any]:
+    safe_doc_id = _validate_doc_id(docId)
+    url = f"{BASE_URL}{quote(safe_doc_id, safe='')}"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            response = await client.delete(url, headers={"ApiKey": apiKey, "ApiSecret": apiSecret})
+            response.raise_for_status()
+            try:
+                return response.json()
+            except Exception:
+                return {"message": "Document deleted successfully", "docId": safe_doc_id}
+        except httpx.HTTPStatusError as e:
+            details = _extract_error_details(e.response)
+            return {"error": f"HTTP {e.response.status_code} deleting document", "details": details}
+        except httpx.RequestError:
+            return {"error": "Network error communicating with TweekIT."}
+        except Exception:
+            logger.exception("Unexpected error in delete_document")
+            return {"error": "Unexpected internal error."}
 
 
 @mcp.tool(
@@ -847,51 +1312,19 @@ async def convert_file(
     )
 )
 async def delete_document(
-    docId: Annotated[str, Field(description="The DocId returned from a prior upload to delete.")],
-    apiKey: Annotated[Optional[str], Field(description="TweekIT API key passed via the ApiKey header. Defaults to the TWEEKIT_API_KEY environment variable when omitted.")] = None,
-    apiSecret: Annotated[Optional[str], Field(description="TweekIT API secret paired with the apiKey. Defaults to the TWEEKIT_API_SECRET environment variable when omitted.")] = None,
+    docId: Annotated[str, Field(description="The alphanumeric DocId returned from a prior upload to delete.")],
 ) -> Dict[str, Any]:
-    """Immediately delete a document and all associated files by DocId.
-
-    Use this when an AI workflow needs to explicitly clean up an uploaded document
-    before its 20-minute auto-expiry — for example, when a user cancels mid-workflow.
-    This is only needed when using the REST API upload flow directly; the MCP
-    convert tools handle their own cleanup automatically.
-
-    Args:
-        docId: The document ID returned from a prior REST API upload call.
-        apiKey: TweekIT API key (`ApiKey` header). Falls back to `TWEEKIT_API_KEY` env var.
-        apiSecret: TweekIT API secret (`ApiSecret` header). Falls back to `TWEEKIT_API_SECRET` env var.
-
-    Returns:
-        A dict confirming deletion, or an error description.
-    """
+    """Immediately delete an uploaded TweekIT document by DocId before its 20-minute auto-expiry."""
     try:
-        key, secret = _resolve_credentials(apiKey, apiSecret)
-    except RuntimeError as exc:
+        key, secret = _resolve_credentials()
+        return await _delete_document_impl(apiKey=key, apiSecret=secret, docId=docId)
+    except (RuntimeError, ValueError) as exc:
         return {"error": str(exc)}
-
-    url = f"{BASE_URL}{docId}"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            response = await client.delete(url, headers={"ApiKey": key, "ApiSecret": secret})
-            response.raise_for_status()
-            try:
-                return response.json()
-            except Exception:
-                return {"message": "Document deleted successfully", "docId": docId}
-        except httpx.HTTPStatusError as e:
-            details = _extract_error_details(e.response)
-            return {"error": f"HTTP {e.response.status_code} deleting document", "details": details}
-        except httpx.RequestError as e:
-            return {"error": f"Network error: {e}"}
-        except Exception as e:
-            return {"error": f"Unexpected error: {e}"}
 
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        title="Fetch & Normalize URL",
+        title="Fetch & Normalize Public HTTPS URL",
         readOnlyHint=True,
         destructiveHint=False,
         idempotentHint=True,
@@ -899,47 +1332,34 @@ async def delete_document(
     )
 )
 async def fetch(
-    url: Annotated[str, Field(description="HTTP or HTTPS URL to retrieve and normalize.")],
+    url: Annotated[str, Field(description="Public HTTPS URL to retrieve and normalize.")],
 ) -> Any:
-    """Fetch a URL and return content.
-
-    - Images return as FastMCP Image.
-    - PDFs return as File(format="pdf").
-    - Text/JSON return as a JSON payload with metadata and text.
-    """
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        return {"error": "Unsupported URL scheme. Use http or https."}
-
-    headers = {
-        "User-Agent": f"tweekit-mcp/{SERVER_VERSION} (+https://github.com/equilibrium-team/tweekit-mcp)"
-    }
+    """Fetch a public HTTPS URL (with SSRF, redirect, and size protections) and return normalized content."""
     try:
-        async with httpx.AsyncClient(timeout=20.0, headers=headers, follow_redirects=True) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            ct = resp.headers.get("content-type", "").lower()
-
-            if ct.startswith("image/"):
-                return Image(data=resp.content, format=ct.split("/")[-1])
-            if ct.startswith("application/pdf"):
-                return File(data=resp.content, format="pdf")
-            if ct.startswith("text/") or "json" in ct:
-                text = resp.text
-                return {
-                    "url": str(url),
-                    "status": resp.status_code,
-                    "content_type": ct,
-                    "text": text,
-                }
-            # Fallback for other binary types
-            return File(data=resp.content, format="bin")
+        raw_bytes, content_type, status_code, final_url = await _safe_fetch_remote(url)
+    except ValueError as exc:
+        return {"error": str(exc)}
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP error: {e.response.status_code}"}
-    except httpx.RequestError as e:
-        return {"error": f"Network error: {e}"}
-    except Exception as e:
-        return {"error": f"Unexpected error: {e}"}
+    except httpx.RequestError:
+        return {"error": "Network error fetching URL."}
+    except Exception:
+        logger.exception("Unexpected error in fetch")
+        return {"error": "Unexpected internal error."}
+
+    ct = content_type.lower()
+    if ct.startswith("image/"):
+        return Image(data=raw_bytes, format=ct.split("/")[-1].split(";")[0].strip())
+    if ct.startswith("application/pdf"):
+        return File(data=raw_bytes, format="pdf")
+    if ct.startswith("text/") or "json" in ct:
+        return {
+            "url": final_url,
+            "status": status_code,
+            "content_type": ct,
+            "text": raw_bytes.decode("utf-8", errors="replace"),
+        }
+    return File(data=raw_bytes, format="bin")
 
 
 @mcp.tool(
@@ -953,12 +1373,9 @@ async def fetch(
 )
 async def search(
     query: Annotated[str, Field(description="Search keywords to send to DuckDuckGo.")],
-    max_results: Annotated[int, Field(description="Maximum number of results to return (1-10).")]=5,
+    max_results: Annotated[int, Field(description="Maximum number of results to return (1-10).")] = 5,
 ) -> Dict[str, Any]:
-    """Simple web search using DuckDuckGo HTML endpoint.
-
-    Returns a list of {title, url, snippet} objects. Best‑effort parsing.
-    """
+    """Simple web search using DuckDuckGo HTML endpoint."""
     max_results = max(1, min(int(max_results), 10))
     q = quote_plus(query)
     url = f"https://html.duckduckgo.com/html/?q={q}"
@@ -972,17 +1389,21 @@ async def search(
             r.raise_for_status()
             html = r.text
 
-        # Very light parsing for result blocks
         items: List[Dict[str, str]] = []
-        # Anchor tags have class result__a and href; snippets often in result__snippet
-        # This is heuristic and may change.
         for m in re.finditer(r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>', html, re.I | re.S):
             href = m.group(1)
             title = re.sub("<.*?>", "", m.group(2))
-            # Try to find a nearby snippet
             start = m.end()
-            snippet_match = re.search(r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>|<div[^>]*class="result__snippet"[^>]*>(.*?)</div>', html[start:start+2000], re.I | re.S)
-            snippet_html = snippet_match.group(1) if snippet_match and snippet_match.group(1) else (snippet_match.group(2) if snippet_match and snippet_match.group(2) else "")
+            snippet_match = re.search(
+                r'<a[^>]*class="result__snippet"[^>]*>(.*?)</a>|<div[^>]*class="result__snippet"[^>]*>(.*?)</div>',
+                html[start : start + 2000],
+                re.I | re.S,
+            )
+            snippet_html = (
+                snippet_match.group(1)
+                if snippet_match and snippet_match.group(1)
+                else (snippet_match.group(2) if snippet_match and snippet_match.group(2) else "")
+            )
             snippet = re.sub("<.*?>", "", snippet_html)
             items.append({"title": title.strip(), "url": href, "snippet": snippet.strip()})
             if len(items) >= max_results:
@@ -991,13 +1412,25 @@ async def search(
         return {"query": query, "results": items}
     except httpx.HTTPStatusError as e:
         return {"error": f"HTTP error: {e.response.status_code}"}
-    except httpx.RequestError as e:
-        return {"error": f"Network error: {e}"}
-    except Exception as e:
-        return {"error": f"Unexpected error: {e}"}
+    except httpx.RequestError:
+        return {"error": "Network error executing search."}
+    except Exception:
+        logger.exception("Unexpected error in search")
+        return {"error": "Unexpected internal error."}
+
+
+def build_streamable_http_app():
+    """Build the FastMCP Streamable HTTP Starlette app with `/mcp/` path normalization and host guard."""
+    return mcp.http_app(
+        path="/mcp",
+        stateless_http=True,
+        host_origin_protection="auto",
+        middleware=[Middleware(_NormalizeMcpPathMiddleware)],
+    )
 
 
 def _parse_args() -> argparse.Namespace:
+    default_host = os.getenv("HOST", "0.0.0.0" if os.getenv("K_SERVICE") else "127.0.0.1")
     parser = argparse.ArgumentParser(description="Run the TweekIT MCP server.")
     parser.add_argument(
         "--transport",
@@ -1007,8 +1440,8 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--host",
-        default=os.getenv("HOST", "0.0.0.0"),
-        help="Host for streamable-http transport (default: 0.0.0.0).",
+        default=default_host,
+        help="Host for streamable-http transport (default: 127.0.0.1 locally, 0.0.0.0 in Cloud Run/Docker).",
     )
     parser.add_argument(
         "--port",
@@ -1019,30 +1452,35 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+async def _serve_http(host: str, port: int) -> None:
+    app = build_streamable_http_app()
+    config = uvicorn.Config(
+        app,
+        host=host,
+        port=port,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+        log_level="warning",
+    )
+    server_instance = uvicorn.Server(config)
+    await server_instance.serve()
+
+
 def main() -> None:
+    global _ACTIVE_TRANSPORT
     args = _parse_args()
+    _ACTIVE_TRANSPORT = args.transport
 
     if args.transport == "streamable-http":
-        logger.info("🚀 TweekIT MCP server starting (HTTP) on %s:%s", args.host, args.port)
+        logger.info("TweekIT MCP server starting (HTTP) on %s:%s", args.host, args.port)
     else:
-        logger.info("🚀 TweekIT MCP server starting (stdio)")
-
-    rpc_kwargs = {}
-    if args.transport == "streamable-http":
-        rpc_kwargs.update({
-            "host": args.host,
-            "port": args.port,
-            "stateless_http": True,
-        })
+        logger.info("TweekIT MCP server starting (stdio)")
 
     try:
-        asyncio.run(
-            mcp.run_async(
-                transport=args.transport,
-                show_banner=False,
-                **rpc_kwargs,
-            )
-        )
+        if args.transport == "streamable-http":
+            asyncio.run(_serve_http(args.host, args.port))
+        else:
+            asyncio.run(mcp.run_async(transport="stdio", show_banner=False))
     except KeyboardInterrupt:
         logger.info("Server stopped by user.")
     except Exception as e:
