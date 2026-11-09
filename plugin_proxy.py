@@ -84,7 +84,10 @@ class ConvertUrlRequest(BaseModel):
     bgcolor: str = Field("", description="Background color for transparent documents (hex RGB).")
     fetchHeaders: Optional[Dict[str, str]] = Field(
         None,
-        description="Optional allowlisted non-credential HTTP headers (Accept, Accept-Language, Cache-Control, Range, User-Agent).",
+        description=(
+            "Optional allowlisted non-credential HTTP headers "
+            "(Accept, Accept-Language, Cache-Control, If-Modified-Since, If-None-Match, Range, User-Agent)."
+        ),
     )
 
 

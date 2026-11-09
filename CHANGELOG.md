@@ -7,15 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.8.1] - 2026-11-09
 
+### Changed (Breaking Security Hardening)
+- **Credential-Free MCP Tool Schemas & Atomic HTTP Header Auth**: Removed `apiKey` and `apiSecret` from all LLM-visible MCP tool schemas (`server.py`, `functions/main.py`) and REST JSON request bodies (`plugin_proxy.py`) so credentials never enter model context or tool-call logs. Callers authenticate via HTTP `ApiKey` + `ApiSecret` headers (sent automatically by `TweekitClient` via `StreamableHttpTransport`) or `TWEEKIT_API_KEY` + `TWEEKIT_API_SECRET` environment variables on local `stdio` servers.
+- **Explicit Workspace Requirement for Local File Conversion (`convert_file`)**: Local file access now defaults to `TWEEKIT_ALLOW_LOCAL_FILES=0`, is unconditionally disabled during HTTP requests, and requires `TWEEKIT_ALLOWED_DIRS` to be explicitly configured when opted in on `stdio`.
+
 ### Security
 - **Supply-Chain Dependency Upgrade (`0` CVEs)**: Raised dependency floors to `fastmcp>=4.1.6`, `mcp>=2.3.0`, `fastapi>=0.162.2`, and `certifi>=2026.10.23` across `pyproject.toml`, `uv.lock`, `functions/requirements.txt`, and `scripts/build_claude_bundle.py`, remediating `CVE-2026-32871`, `CVE-2026-27124` (`GHSA-rww4-4w9c-7733`), `GHSA-7xgj-8392-5q4r`, and `CVE-2025-64340`.
-- **Credential-Free MCP Tool Schemas & Native HTTP Header Auth**: Removed `apiKey` and `apiSecret` from all LLM-visible MCP tool schemas (`server.py`, `functions/main.py`) and REST JSON request bodies (`plugin_proxy.py`); wired `fastmcp.server.dependencies.get_http_headers()` and `StreamableHttpTransport` header authentication in `TweekitClient`.
-- **Opt-In Workspace Sandbox for `convert_file`**: Disabled local file conversion by default (`TWEEKIT_ALLOW_LOCAL_FILES=0`) and over HTTP transport; added symlink-resolved confinement to `TWEEKIT_ALLOWED_DIRS`, sensitive dotfile/credential denylists, safe output-extension checks, and atomic `xb` non-overwrite protection unless `TWEEKIT_ALLOW_OVERWRITE=1` is set.
-- **SSRF, Redirect, Size & Header Protections (`convert_url`, `fetch`, `/convert-url`)**: Enforced `https://`-only URLs, DNS IP validation blocking loopback/RFC1918/link-local/CGNAT/cloud-metadata addresses on initial connect and every redirect hop (`max_redirects=5`), a `25 MiB` streaming download cap, and a non-credential `fetchHeaders` allowlist.
-- **Input & Host Hardening**: Added strict alphanumeric validation on `docId` and format tokens (`inext`/`outfmt`), defaulted local `--host` binding to `127.0.0.1` (`0.0.0.0` in Cloud Run/Docker) with `host_origin_protection="auto"`, and published PyPI distributions via OIDC Trusted Publishing with PEP 740 provenance attestations.
+- **Connect-Time DNS IP Pinning & SSRF Protections (`convert_url`, `fetch`, `/convert-url`)**: Enforced `https://`-only URLs, connect-time IP pinning (`_PinnedPublicDNSBackend`) preventing DNS-rebinding TOCTOU across initial requests and every redirect hop (`max_redirects=5`), IPv4/IPv6/NAT64/6to4/Teredo private-range blocking, a `25 MiB` streaming download cap, and a non-credential `fetchHeaders` allowlist.
+- **Symlink-Safe Local Sandbox (`lstat` + `O_NOFOLLOW`)**: Unconditionally rejects existing and dangling symlinks on read and write paths (including `TWEEKIT_ALLOW_OVERWRITE=1`), blocks workspace-relative dotfile/credential paths, enforces safe media/document output extensions, validates `docId`/`inext`/`outfmt` tokens, and binds `--host` to `127.0.0.1` locally (`0.0.0.0` in Cloud Run/Docker) with `host_origin_protection="auto"`.
 
 ### Fixed
-- **Trailing-Slash `/mcp/` In-Place Routing & Reverse-Proxy Scheme Preservation**: Added `_NormalizeMcpPathMiddleware` and Uvicorn `--proxy-headers` support so both `https://mcp.tweekit.io/mcp` and `https://mcp.tweekit.io/mcp/` initialize directly (`200 OK`) without `307` redirects or `http://` scheme downgrades behind Cloud Run TLS termination.
+- **Trailing-Slash `/mcp/` In-Place Routing & Registry Ownership Markers**: Added `_NormalizeMcpPathMiddleware` and Uvicorn `--proxy-headers` support so both `https://mcp.tweekit.io/mcp` and `https://mcp.tweekit.io/mcp/` initialize directly (`200 OK`) without `307` redirects or `http://` scheme downgrades, and included both active Official MCP Registry ownership markers (`io.github.equilibrium-team/tweekit` and `io.tweekit/mcp`) in `README.md`.
 
 ## [1.8.0] - 2026-10-28
 

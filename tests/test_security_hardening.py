@@ -1,6 +1,7 @@
-"""Security regression suite covering SSRF, local sandbox confinement, credential schemas, and `/mcp/` routing."""
+"""Security regression suite covering DNS-pinned SSRF, dangling-symlink sandbox, credential schemas, and `/mcp/` routing."""
 from pathlib import Path
 
+import httpcore
 import pytest
 import respx
 from fastapi.testclient import TestClient
@@ -8,6 +9,17 @@ from httpx import Response
 
 import server
 from tests.conftest import tool_fn
+
+
+def _try_symlink(link: Path, target: Path) -> bool:
+    try:
+        link.symlink_to(target)
+        return True
+    except OSError as exc:
+        # Windows without Developer Mode raises WinError 1314 on unprivileged symlink creation.
+        if getattr(exc, "winerror", None) == 1314:
+            return False
+        raise
 
 
 def test_trailing_slash_mcp_initialize_returns_200_without_redirect():
@@ -39,10 +51,10 @@ def test_trailing_slash_mcp_initialize_returns_200_without_redirect():
 
 
 @respx.mock
-def test_http_header_credentials_authenticate_mcp_tool(monkeypatch):
-    """Streamable HTTP requests pass ApiKey/ApiSecret via HTTP headers with zero tool-arg secrets."""
-    monkeypatch.delenv("TWEEKIT_API_KEY", raising=False)
-    monkeypatch.delenv("TWEEKIT_API_SECRET", raising=False)
+def test_http_header_credentials_authenticate_mcp_tool_and_reject_partial_headers(monkeypatch):
+    """Streamable HTTP requests pass ApiKey/ApiSecret via HTTP headers and never mix partial headers with env."""
+    monkeypatch.setenv("TWEEKIT_API_KEY", "operator-env-key")
+    monkeypatch.setenv("TWEEKIT_API_SECRET", "operator-env-secret")
 
     route = respx.get(f"{server.BASE_URL}doctype").mock(
         return_value=Response(200, json={"supported": ["pdf", "png"]})
@@ -54,21 +66,29 @@ def test_http_header_credentials_authenticate_mcp_tool(monkeypatch):
         "method": "tools/call",
         "params": {"name": "doctype", "arguments": {"extension": "pdf"}},
     }
-    headers = {
+    full_headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
         "ApiKey": "hdr-key",
         "ApiSecret": "hdr-secret",
     }
+    partial_headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "ApiKey": "hdr-key-only",
+    }
 
     with TestClient(app, base_url="https://mcp.tweekit.io") as client:
-        resp = client.post("/mcp/", json=call_body, headers=headers, follow_redirects=False)
+        resp = client.post("/mcp/", json=call_body, headers=full_headers, follow_redirects=False)
+        partial_resp = client.post("/mcp/", json=call_body, headers=partial_headers, follow_redirects=False)
 
     assert resp.status_code == 200
-    assert route.called
+    assert route.call_count == 1
     upstream_req = route.calls[0].request
     assert upstream_req.headers["apikey"] == "hdr-key"
     assert upstream_req.headers["apisecret"] == "hdr-secret"
+    assert partial_resp.status_code == 200
+    assert "Incomplete TweekIT HTTP header credentials" in partial_resp.text
 
 
 @pytest.mark.asyncio
@@ -86,6 +106,8 @@ def test_http_header_credentials_authenticate_mcp_tool(monkeypatch):
         "https://100.64.0.1/cgnat.pdf",
         "https://[::1]/loopback.pdf",
         "https://[::ffff:169.254.169.254]/mapped.pdf",
+        "https://[64:ff9b::a9fe:a9fe]/nat64-metadata.pdf",
+        "https://[2002:7f00:0001::]/sixtofour-loopback.pdf",
         "https://user:pass@example.com/file.pdf",
     ],
 )
@@ -101,6 +123,68 @@ async def test_ssrf_blocks_insecure_schemes_and_private_targets(monkeypatch, bad
 
 
 @pytest.mark.asyncio
+async def test_dns_rebinding_pinned_backend_never_re_resolves_hostname():
+    """Verify `_PinnedPublicDNSBackend` connects strictly to the pre-validated IP, defeating DNS rebinding."""
+
+    class FakeStream(httpcore.AsyncNetworkStream):
+        def __init__(self, peer_ip: str, peer_port: int) -> None:
+            self._peer = (peer_ip, peer_port)
+            self.closed = False
+
+        async def read(self, max_bytes: int, timeout=None) -> bytes:
+            return b""
+
+        async def write(self, buffer: bytes, timeout=None) -> None:
+            return None
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+        async def start_tls(self, ssl_context, server_hostname=None, timeout=None):
+            return self
+
+        def get_extra_info(self, info: str):
+            if info == "server_addr":
+                return self._peer
+            return None
+
+    class FakeInnerBackend(httpcore.AsyncNetworkBackend):
+        def __init__(self, reported_peer_ip: str | None = None) -> None:
+            self.connect_calls: list[tuple[str, int]] = []
+            self.reported_peer_ip = reported_peer_ip
+
+        async def connect_tcp(self, host: str, port: int, timeout=None, local_address=None, socket_options=None):
+            # If httpcore passed the unpinned hostname here, an OS getaddrinfo call could rebind to 169.254.169.254!
+            self.connect_calls.append((host, port))
+            return FakeStream(self.reported_peer_ip or host, port)
+
+        async def connect_unix_socket(self, path: str, timeout=None, socket_options=None):
+            raise RuntimeError("unused")
+
+        async def sleep(self, seconds: float) -> None:
+            return None
+
+    inner = FakeInnerBackend()
+    pinned = server._PinnedPublicDNSBackend(inner)
+    pinned.register("rebind.attacker.example", 443, ["93.184.216.34"])
+
+    stream = await pinned.connect_tcp("rebind.attacker.example", 443)
+    assert inner.connect_calls == [("93.184.216.34", 443)]
+    assert stream is not None
+
+    # Unregistered hostnames must be refused immediately without DNS resolution
+    with pytest.raises(httpcore.ConnectError, match="Refusing unpinned"):
+        await pinned.connect_tcp("unregistered.example", 443)
+
+    # Even if an underlying socket reports a private peer_addr, the stream is closed and rejected
+    spoofed_inner = FakeInnerBackend(reported_peer_ip="169.254.169.254")
+    spoofed_pinned = server._PinnedPublicDNSBackend(spoofed_inner)
+    spoofed_pinned.register("rebind.attacker.example", 443, ["93.184.216.34"])
+    with pytest.raises(httpcore.ConnectError, match="not a public IP"):
+        await spoofed_pinned.connect_tcp("rebind.attacker.example", 443)
+
+
+@pytest.mark.asyncio
 @respx.mock
 async def test_ssrf_blocks_redirect_to_metadata_and_disallowed_headers(monkeypatch):
     monkeypatch.setenv("TWEEKIT_API_KEY", "k")
@@ -113,7 +197,6 @@ async def test_ssrf_blocks_redirect_to_metadata_and_disallowed_headers(monkeypat
     assert "error" in redirect_res
     assert "Blocked non-public IP" in redirect_res["error"]
 
-    # Metadata-Flavor and Authorization headers from LLM tool calls must be rejected
     hdr_res = await tool_fn(server.convert_url)(
         url="https://example.com/doc.pdf",
         outfmt="png",
@@ -125,7 +208,7 @@ async def test_ssrf_blocks_redirect_to_metadata_and_disallowed_headers(monkeypat
     auth_hdr_res = await tool_fn(server.convert_url)(
         url="https://example.com/doc.pdf",
         outfmt="png",
-        fetchHeaders={"Authorization": "Bearer secret-token"},
+        fetchHeaders={"Authorization": "Bearer placeholder"},
     )
     assert "error" in auth_hdr_res
     assert "Authorization" in auth_hdr_res["error"]
@@ -146,16 +229,23 @@ async def test_remote_download_size_limit_enforced(monkeypatch):
 
 @pytest.mark.asyncio
 @respx.mock
-async def test_convert_file_sandbox_blocks_traversal_symlinks_dotfiles_and_overwrite(monkeypatch, tmp_path):
+async def test_convert_file_sandbox_blocks_traversal_dangling_symlinks_dotfiles_and_overwrite(monkeypatch, tmp_path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     outside = tmp_path / "outside"
     outside.mkdir()
 
     monkeypatch.setenv("TWEEKIT_ALLOW_LOCAL_FILES", "1")
-    monkeypatch.setenv("TWEEKIT_ALLOWED_DIRS", str(workspace))
     monkeypatch.setenv("TWEEKIT_API_KEY", "k")
     monkeypatch.setenv("TWEEKIT_API_SECRET", "s")
+
+    # 0. Missing TWEEKIT_ALLOWED_DIRS must fail closed rather than defaulting to cwd
+    monkeypatch.delenv("TWEEKIT_ALLOWED_DIRS", raising=False)
+    res_no_dirs = await tool_fn(server.convert_file)(file_path=str(workspace / "a.psd"), outfmt="png")
+    assert "error" in res_no_dirs
+    assert "TWEEKIT_ALLOWED_DIRS" in res_no_dirs["error"]
+
+    monkeypatch.setenv("TWEEKIT_ALLOWED_DIRS", str(workspace))
 
     outside_secret = outside / "secret.txt"
     outside_secret.write_text("top-secret")
@@ -165,27 +255,41 @@ async def test_convert_file_sandbox_blocks_traversal_symlinks_dotfiles_and_overw
     assert "error" in res_outside
     assert "outside the allowed workspace" in res_outside["error"]
 
-    # 2. Symlink escaping workspace blocked
-    escape_link = workspace / "link.txt"
-    escape_link.symlink_to(outside_secret)
-    res_symlink = await tool_fn(server.convert_file)(file_path=str(escape_link), outfmt="pdf")
-    assert "error" in res_symlink
-    assert "Symbolic links" in res_symlink["error"]
-
-    # 3. Sensitive dotfile (.env) inside workspace blocked
+    # 2. Sensitive dotfile (.env) inside workspace blocked
     dotenv_file = workspace / ".env"
-    dotenv_file.write_text("SECRET=1")
+    dotenv_file.write_text("FLAG=1")
     res_dotenv = await tool_fn(server.convert_file)(file_path=str(dotenv_file), outfmt="txt")
     assert "error" in res_dotenv
     assert "sensitive" in res_dotenv["error"].lower()
 
-    # 4. Unsafe executable output extension (.sh) and existing file overwrite blocked
     valid_src = workspace / "image.psd"
     valid_src.write_bytes(b"PSDDATA")
     respx.post(server.BASE_URL).mock(
         return_value=Response(200, content=b"PNG_BYTES", headers={"content-type": "image/png"})
     )
 
+    # 3. Symlink read escape AND dangling-symlink write escape (even with TWEEKIT_ALLOW_OVERWRITE=1!)
+    escape_read_link = workspace / "read_link.txt"
+    if _try_symlink(escape_read_link, outside_secret):
+        res_symlink = await tool_fn(server.convert_file)(file_path=str(escape_read_link), outfmt="pdf")
+        assert "error" in res_symlink
+        assert "Symbolic links" in res_symlink["error"]
+
+        outside_nonexistent = outside / "escaped_write.png"
+        dangling_out_link = workspace / "dangling_out.png"
+        assert _try_symlink(dangling_out_link, outside_nonexistent)
+        monkeypatch.setenv("TWEEKIT_ALLOW_OVERWRITE", "1")
+        res_dangling = await tool_fn(server.convert_file)(
+            file_path=str(valid_src),
+            outfmt="png",
+            output_path=str(dangling_out_link),
+        )
+        assert "error" in res_dangling
+        assert "Symbolic links" in res_dangling["error"]
+        assert not outside_nonexistent.exists()
+        monkeypatch.delenv("TWEEKIT_ALLOW_OVERWRITE", raising=False)
+
+    # 4. Unsafe executable output extension (.sh) and existing file overwrite blocked
     res_sh = await tool_fn(server.convert_file)(
         file_path=str(valid_src),
         outfmt="png",

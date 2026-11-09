@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import base64
+import errno
 import ipaddress
 import json
 import logging
@@ -9,13 +10,14 @@ import os
 import re
 import socket
 from pathlib import Path
-from typing import Annotated, Any, Dict, FrozenSet, List, Optional
+from typing import Annotated, Any, Dict, FrozenSet, Iterable, List, Optional
 from urllib.parse import quote, quote_plus, urljoin, urlparse
 
+import httpcore
 import httpx
 import uvicorn
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_http_headers
+from fastmcp.server.dependencies import get_http_headers, get_http_request
 from fastmcp.utilities.types import File, Image
 from mcp.types import ToolAnnotations
 from pydantic import Field
@@ -48,6 +50,8 @@ _BLOCKED_HOSTNAMES: FrozenSet[str] = frozenset({
 })
 _BLOCKED_HOST_SUFFIXES = (".localhost", ".local", ".internal", ".home.arpa")
 _CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+_NAT64_WELL_KNOWN = ipaddress.ip_network("64:ff9b::/96")
+_NAT64_LOCAL = ipaddress.ip_network("64:ff9b:1::/48")
 
 _SAFE_FETCH_HEADERS: FrozenSet[str] = frozenset({
     "accept",
@@ -234,11 +238,7 @@ AI_PROVIDER_PROFILES: Dict[str, Dict[str, Any]] = {
 
 
 class _NormalizeMcpPathMiddleware:
-    """Normalize trailing-slash `/mcp/` requests in-place and honor `X-Forwarded-Proto`.
-
-    Avoids Starlette 307 redirects on `POST /mcp/` (which drop TLS behind reverse
-    proxies or fail MCP clients that refuse redirects on `initialize`).
-    """
+    """Normalize trailing-slash `/mcp/` requests in-place and honor `X-Forwarded-Proto`."""
 
     def __init__(self, app: Any) -> None:
         self.app = app
@@ -262,6 +262,75 @@ class _NormalizeMcpPathMiddleware:
             if mutated is not None:
                 scope = mutated
         await self.app(scope, receive, send)
+
+
+class _PinnedPublicDNSBackend(httpcore.AsyncNetworkBackend):
+    """Connect exclusively to pre-validated public IP addresses to eliminate DNS-rebinding TOCTOU."""
+
+    def __init__(self, inner: httpcore.AsyncNetworkBackend) -> None:
+        self._inner = inner
+        self._pinned: Dict[tuple[str, int], List[str]] = {}
+        self.connected_targets: List[tuple[str, int]] = []
+
+    def register(self, hostname: str, port: int, validated_ips: List[str]) -> None:
+        clean_ips = [ip for ip in validated_ips if _is_public_ip(ip)]
+        if not clean_ips:
+            raise ValueError(f"No public IP addresses available to pin for '{hostname}'.")
+        self._pinned[(hostname.lower().rstrip("."), port)] = clean_ips
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: Optional[float] = None,
+        local_address: Optional[str] = None,
+        socket_options: Optional[Iterable[Any]] = None,
+    ) -> httpcore.AsyncNetworkStream:
+        normalized_host = host.strip("[]").lower().rstrip(".")
+        candidates = self._pinned.get((normalized_host, port))
+        if not candidates:
+            if _is_public_ip(normalized_host):
+                candidates = [normalized_host]
+            else:
+                raise httpcore.ConnectError(f"Refusing unpinned outbound TCP connection to '{host}:{port}'.")
+
+        last_err: Optional[Exception] = None
+        for ip_addr in candidates:
+            if not _is_public_ip(ip_addr):
+                raise httpcore.ConnectError(f"Blocked non-public pinned IP '{ip_addr}'.")
+            try:
+                stream = await self._inner.connect_tcp(
+                    ip_addr,
+                    port,
+                    timeout=timeout,
+                    local_address=local_address,
+                    socket_options=socket_options,
+                )
+                peer = stream.get_extra_info("server_addr")
+                if isinstance(peer, tuple) and peer and isinstance(peer[0], str):
+                    peer_ip = peer[0].split("%", 1)[0]
+                    if not _is_public_ip(peer_ip):
+                        await stream.aclose()
+                        raise httpcore.ConnectError(f"Connected peer '{peer_ip}' is not a public IP address.")
+                self.connected_targets.append((ip_addr, port))
+                return stream
+            except Exception as exc:
+                last_err = exc
+
+        if last_err is not None:
+            raise last_err
+        raise httpcore.ConnectError(f"Unable to connect to any validated IP for '{host}:{port}'.")
+
+    async def connect_unix_socket(
+        self,
+        path: str,
+        timeout: Optional[float] = None,
+        socket_options: Optional[Iterable[Any]] = None,
+    ) -> httpcore.AsyncNetworkStream:
+        raise httpcore.ConnectError("Unix domain socket connections are disabled for remote URL fetching.")
+
+    async def sleep(self, seconds: float) -> None:
+        await self._inner.sleep(seconds)
 
 
 def _extract_extension_from_input(filename_or_ext: str) -> str:
@@ -396,24 +465,35 @@ def _resolve_credentials(
     provided_key: Optional[str] = None,
     provided_secret: Optional[str] = None,
 ) -> tuple[str, str]:
-    """Resolve TweekIT API credentials from SDK args, MCP HTTP headers, or environment variables."""
-    req_headers = get_http_headers(
-        include={"apikey", "apisecret", "x-api-key", "x-api-secret", "authorization"}
-    )
-    header_key = (
-        req_headers.get("apikey")
-        or req_headers.get("x-api-key")
-        or _extract_bearer(req_headers.get("authorization"))
-        or ""
-    ).strip()
-    header_secret = (
-        req_headers.get("apisecret")
-        or req_headers.get("x-api-secret")
-        or ""
-    ).strip()
+    """Resolve TweekIT API credentials from SDK args, atomic HTTP header pairs, or env vars."""
+    if provided_key is not None or provided_secret is not None:
+        api_key = (provided_key or os.getenv("TWEEKIT_API_KEY") or "").strip()
+        api_secret = (provided_secret or os.getenv("TWEEKIT_API_SECRET") or "").strip()
+    else:
+        req_headers = get_http_headers(
+            include={"apikey", "apisecret", "x-api-key", "x-api-secret", "authorization"}
+        )
+        header_key = (
+            req_headers.get("apikey")
+            or req_headers.get("x-api-key")
+            or _extract_bearer(req_headers.get("authorization"))
+            or ""
+        ).strip()
+        header_secret = (
+            req_headers.get("apisecret")
+            or req_headers.get("x-api-secret")
+            or ""
+        ).strip()
+        if header_key or header_secret:
+            if not (header_key and header_secret):
+                raise RuntimeError(
+                    "Incomplete TweekIT HTTP header credentials: supply both ApiKey and ApiSecret headers."
+                )
+            return header_key, header_secret
 
-    api_key = (provided_key or header_key or os.getenv("TWEEKIT_API_KEY") or "").strip()
-    api_secret = (provided_secret or header_secret or os.getenv("TWEEKIT_API_SECRET") or "").strip()
+        api_key = (os.getenv("TWEEKIT_API_KEY") or "").strip()
+        api_secret = (os.getenv("TWEEKIT_API_SECRET") or "").strip()
+
     missing = []
     if not api_key:
         missing.append("TWEEKIT_API_KEY")
@@ -428,14 +508,23 @@ def _resolve_credentials(
 
 
 def _is_public_ip(raw_ip: str) -> bool:
-    """Return True only when `raw_ip` is a globally routable unicast IP address."""
+    """Return True only when `raw_ip` is a globally routable unicast IP address (including embedded v4 checks)."""
     try:
         ip = ipaddress.ip_address(raw_ip)
     except ValueError:
         return False
 
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return _is_public_ip(str(ip.ipv4_mapped))
+        if ip.sixtofour is not None:
+            return _is_public_ip(str(ip.sixtofour))
+        if ip.teredo is not None:
+            server_v4, client_v4 = ip.teredo
+            return _is_public_ip(str(server_v4)) and _is_public_ip(str(client_v4))
+        if ip in _NAT64_WELL_KNOWN or ip in _NAT64_LOCAL:
+            embedded_v4 = ipaddress.IPv4Address(ip.packed[-4:])
+            return _is_public_ip(str(embedded_v4))
 
     if (
         not ip.is_global
@@ -468,8 +557,8 @@ async def _resolve_host_ips(hostname: str, port: int) -> List[str]:
     return ips
 
 
-async def _validate_public_https_url(url: str) -> tuple[str, str]:
-    """Validate that `url` uses HTTPS and resolves exclusively to public, non-private IPs."""
+async def _validate_public_https_url(url: str) -> tuple[str, str, int, List[str]]:
+    """Validate that `url` uses HTTPS and resolves exclusively to public IPs, returning pinned IPs."""
     parsed = urlparse((url or "").strip())
     if parsed.scheme.lower() != "https":
         raise ValueError("Unsupported URL scheme: only 'https://' URLs are permitted.")
@@ -482,16 +571,21 @@ async def _validate_public_https_url(url: str) -> tuple[str, str]:
         raise ValueError(f"Blocked internal or local hostname: '{hostname}'.")
 
     try:
+        port = parsed.port or 443
+    except ValueError as exc:
+        raise ValueError("URL contains an invalid port.") from exc
+
+    try:
         literal_ip = ipaddress.ip_address(hostname)
     except ValueError:
         literal_ip = None
 
     if literal_ip is not None:
-        if not _is_public_ip(str(literal_ip)):
+        ip_str = str(literal_ip)
+        if not _is_public_ip(ip_str):
             raise ValueError(f"Blocked non-public IP address: '{hostname}'.")
-        return url.strip(), hostname
+        return url.strip(), hostname, port, [ip_str]
 
-    port = parsed.port or 443
     try:
         resolved_ips = await _resolve_host_ips(hostname, port)
     except socket.gaierror as exc:
@@ -503,7 +597,7 @@ async def _validate_public_https_url(url: str) -> tuple[str, str]:
         if not _is_public_ip(ip_str):
             raise ValueError(f"Hostname '{hostname}' resolves to a blocked non-public IP address.")
 
-    return url.strip(), hostname
+    return url.strip(), hostname, port, resolved_ips
 
 
 def _sanitize_fetch_headers(
@@ -542,6 +636,8 @@ def _sanitize_fetch_headers(
                     "exfiltration. Add the target domain to TWEEKIT_ALLOWED_AUTH_HOSTS if required."
                 )
             sanitized["Authorization"] = val
+        elif lower_k == "user-agent":
+            sanitized["User-Agent"] = val
         elif lower_k in _SAFE_FETCH_HEADERS:
             sanitized[key] = val
         else:
@@ -558,22 +654,28 @@ async def _safe_fetch_remote(
     allow_auth_headers: bool = False,
     max_bytes: Optional[int] = None,
 ) -> tuple[bytes, str, int, str]:
-    """Fetch a remote HTTPS resource with SSRF IP validation on every hop and a streaming size cap."""
+    """Fetch a remote HTTPS resource with connect-time IP pinning on every hop and a streaming size cap."""
     byte_limit = max_bytes or int(os.getenv("TWEEKIT_MAX_DOWNLOAD_BYTES", str(DEFAULT_MAX_DOWNLOAD_BYTES)))
-    current_url, initial_host = await _validate_public_https_url(url)
+    current_url, initial_host, initial_port, initial_ips = await _validate_public_https_url(url)
     req_headers = _sanitize_fetch_headers(
         fetch_headers,
         hostname=initial_host,
         allow_auth_headers=allow_auth_headers,
     )
-    initial_origin = (urlparse(current_url).scheme.lower(), initial_host, urlparse(current_url).port or 443)
+    initial_origin = ("https", initial_host, initial_port)
 
     timeout = httpx.Timeout(20.0, read=60.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+    transport = httpx.AsyncHTTPTransport(trust_env=False)
+    pinned_backend = _PinnedPublicDNSBackend(transport._pool._network_backend)
+    transport._pool._network_backend = pinned_backend
+    pinned_backend.register(initial_host, initial_port, initial_ips)
+
+    async with httpx.AsyncClient(transport=transport, timeout=timeout, follow_redirects=False) as client:
         for hop in range(MAX_REDIRECT_HOPS + 1):
             if hop > 0:
-                current_url, hop_host = await _validate_public_https_url(current_url)
-                hop_origin = (urlparse(current_url).scheme.lower(), hop_host, urlparse(current_url).port or 443)
+                current_url, hop_host, hop_port, hop_ips = await _validate_public_https_url(current_url)
+                pinned_backend.register(hop_host, hop_port, hop_ips)
+                hop_origin = ("https", hop_host, hop_port)
                 if hop_origin != initial_origin:
                     req_headers.pop("Authorization", None)
 
@@ -610,17 +712,30 @@ async def _safe_fetch_remote(
     raise ValueError(f"Exceeded maximum redirect limit ({MAX_REDIRECT_HOPS}).")
 
 
+def _has_active_http_request() -> bool:
+    try:
+        get_http_request()
+        return True
+    except RuntimeError:
+        return False
+
+
 def _is_local_files_enabled() -> bool:
-    """Local file access is opt-in only (`TWEEKIT_ALLOW_LOCAL_FILES=1`) and disabled over HTTP."""
-    if _ACTIVE_TRANSPORT == "streamable-http":
+    """Local file access is opt-in only (`TWEEKIT_ALLOW_LOCAL_FILES=1`) and always disabled over HTTP."""
+    if _ACTIVE_TRANSPORT == "streamable-http" or _has_active_http_request():
         return False
     return os.getenv("TWEEKIT_ALLOW_LOCAL_FILES", "0").strip().lower() in {"1", "true", "yes"}
 
 
 def _get_allowed_local_dirs() -> List[Path]:
-    """Return canonical workspace directories permitted for local file reads and writes."""
+    """Return explicitly configured canonical workspace directories permitted for local reads/writes."""
     raw = os.getenv("TWEEKIT_ALLOWED_DIRS", "").strip()
-    candidates = [p.strip() for p in raw.split(os.pathsep) if p.strip()] if raw else [str(Path.cwd())]
+    if not raw:
+        raise ValueError(
+            "TWEEKIT_ALLOWED_DIRS must be explicitly set to one or more workspace directories "
+            "when TWEEKIT_ALLOW_LOCAL_FILES=1."
+        )
+    candidates = [p.strip() for p in raw.split(os.pathsep) if p.strip()]
     allowed: List[Path] = []
     for entry in candidates:
         resolved = Path(entry).expanduser().resolve()
@@ -629,27 +744,46 @@ def _get_allowed_local_dirs() -> List[Path]:
         if resolved.is_dir():
             allowed.append(resolved)
     if not allowed:
-        raise ValueError("No valid workspace directory configured in TWEEKIT_ALLOWED_DIRS.")
+        raise ValueError("No valid existing workspace directory found in TWEEKIT_ALLOWED_DIRS.")
     return allowed
 
 
-def _is_sensitive_path(path: Path) -> bool:
-    """Return True if `path` touches sensitive dotfile, credential, or shell-startup locations."""
-    lower_name = path.name.lower()
+def _is_sensitive_relative_path(target: Path, allowed_root: Path) -> bool:
+    """Return True if `target` (relative to `allowed_root`) touches sensitive dotfiles or credentials."""
+    lower_name = target.name.lower()
     if lower_name in _SENSITIVE_FILENAMES or lower_name.startswith(".env."):
         return True
     if lower_name.endswith(_SENSITIVE_SUFFIXES):
         return True
-    for part in path.parts:
+    rel = target.relative_to(allowed_root)
+    for part in rel.parts:
         if part.lower() in _SENSITIVE_PATH_SEGMENTS:
             return True
     return False
 
 
+def _assert_no_symlinks_under_root(raw_path: Path, allowed_dirs: List[Path]) -> None:
+    """Reject any symlink on the leaf or intermediate components inside the workspace."""
+    if raw_path.is_symlink():
+        raise ValueError("Symbolic links are not permitted in local file paths.")
+    cursor = raw_path.parent
+    stop_roots = set(allowed_dirs)
+    while cursor != cursor.parent and cursor not in stop_roots:
+        if cursor.is_symlink():
+            raise ValueError("Symbolic links are not permitted in local directory paths.")
+        cursor = cursor.parent
+
+
+def _match_allowed_root(resolved: Path, allowed_dirs: List[Path]) -> Optional[Path]:
+    for root in allowed_dirs:
+        if resolved.is_relative_to(root):
+            return root
+    return None
+
+
 def _validate_local_read_path(file_path: str, allowed_dirs: List[Path]) -> Path:
     raw = Path(file_path).expanduser()
-    if raw.is_symlink():
-        raise ValueError("Symbolic links are not permitted for input file_path.")
+    _assert_no_symlinks_under_root(raw, allowed_dirs)
     try:
         resolved = raw.resolve(strict=True)
     except FileNotFoundError as exc:
@@ -657,12 +791,13 @@ def _validate_local_read_path(file_path: str, allowed_dirs: List[Path]) -> Path:
 
     if not resolved.is_file():
         raise ValueError(f"Input path is not a regular file: '{file_path}'")
-    if not any(resolved.is_relative_to(root) for root in allowed_dirs):
+    matched_root = _match_allowed_root(resolved, allowed_dirs)
+    if matched_root is None:
         raise ValueError(
             "Input file_path is outside the allowed workspace directory. "
             "Configure TWEEKIT_ALLOWED_DIRS to permit this directory."
         )
-    if _is_sensitive_path(resolved):
+    if _is_sensitive_relative_path(resolved, matched_root):
         raise ValueError("Reading sensitive credential, configuration, or dotfile paths is prohibited.")
 
     max_bytes = int(os.getenv("TWEEKIT_MAX_LOCAL_FILE_BYTES", str(DEFAULT_MAX_LOCAL_FILE_BYTES)))
@@ -674,13 +809,14 @@ def _validate_local_read_path(file_path: str, allowed_dirs: List[Path]) -> Path:
 
 def _validate_local_write_path(output_path: str, allowed_dirs: List[Path]) -> Path:
     raw = Path(output_path).expanduser()
-    if raw.exists() and raw.is_symlink():
-        raise ValueError("Symbolic links are not permitted for output_path.")
+    # Always inspect lstat via is_symlink() unconditionally so dangling symlinks are rejected.
+    _assert_no_symlinks_under_root(raw, allowed_dirs)
 
-    # Walk up to nearest existing parent to resolve symlinks safely before creating subdirectories.
     probe = raw.parent
     missing_parts: List[str] = []
     while not probe.exists():
+        if probe.is_symlink():
+            raise ValueError("Symbolic links are not permitted in output_path parent directories.")
         if probe == probe.parent:
             break
         missing_parts.append(probe.name)
@@ -693,12 +829,16 @@ def _validate_local_write_path(output_path: str, allowed_dirs: List[Path]) -> Pa
         resolved_parent = resolved_parent / part
     resolved_dest = resolved_parent / raw.name
 
-    if not any(resolved_dest.is_relative_to(root) for root in allowed_dirs):
+    if resolved_dest.is_symlink():
+        raise ValueError("Symbolic links are not permitted for output_path.")
+
+    matched_root = _match_allowed_root(resolved_dest, allowed_dirs)
+    if matched_root is None:
         raise ValueError(
             "Output path is outside the allowed workspace directory. "
             "Configure TWEEKIT_ALLOWED_DIRS to permit this directory."
         )
-    if _is_sensitive_path(resolved_dest):
+    if _is_sensitive_relative_path(resolved_dest, matched_root):
         raise ValueError("Writing to sensitive credential, configuration, or dotfile paths is prohibited.")
 
     out_ext = _normalize_extension(resolved_dest.suffix)
@@ -706,6 +846,25 @@ def _validate_local_write_path(output_path: str, allowed_dirs: List[Path]) -> Pa
         raise ValueError(f"Disallowed or unsafe output file extension: '.{out_ext or ''}'.")
 
     return resolved_dest
+
+
+def _write_bytes_safely(dest: Path, data: bytes, *, allow_overwrite: bool) -> None:
+    """Write `data` to `dest` refusing symlinks (`O_NOFOLLOW`) and exclusive-create unless overwrite is enabled."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_symlink():
+        raise ValueError("Symbolic links are not permitted for output_path.")
+
+    flags = os.O_WRONLY | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    flags |= os.O_TRUNC if allow_overwrite else os.O_EXCL
+    try:
+        fd = os.open(str(dest), flags, 0o644)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise ValueError("Symbolic links are not permitted for output_path.") from exc
+        raise
+
+    with os.fdopen(fd, "wb") as fp:
+        fp.write(data)
 
 
 def _extract_error_details(response: Optional[httpx.Response]) -> str:
@@ -1003,7 +1162,7 @@ async def _convert_url_impl(
     *,
     allow_auth_headers: bool = False,
 ) -> Any:
-    """Download a validated public HTTPS document and convert it via TweekIT."""
+    """Download a validated public HTTPS document (with connect-time IP pinning) and convert it via TweekIT."""
     try:
         raw_bytes, content_type, _, final_url = await _safe_fetch_remote(
             url,
@@ -1077,9 +1236,17 @@ async def convert_url(
     page: Annotated[int, Field(description="Page number to convert for multi-page inputs.")] = 1,
     alpha: Annotated[bool, Field(description="Preserve alpha transparency when producing raster formats.")] = True,
     bgColor: Annotated[str, Field(description="Background color (hex RGB) to composite behind transparent pixels.")] = "",
-    fetchHeaders: Annotated[Optional[Dict[str, str]], Field(description="Optional allowlisted non-credential HTTP headers (Accept, Accept-Language, Cache-Control, Range, User-Agent).")] = None,
+    fetchHeaders: Annotated[
+        Optional[Dict[str, str]],
+        Field(
+            description=(
+                "Optional allowlisted non-credential HTTP headers "
+                "(Accept, Accept-Language, Cache-Control, If-Modified-Since, If-None-Match, Range, User-Agent)."
+            )
+        ),
+    ] = None,
 ) -> Any:
-    """Download a public HTTPS file (with SSRF, redirect, and size protections) and convert it via TweekIT."""
+    """Download a public HTTPS file (with connect-time IP pinning, redirect, and size limits) and convert via TweekIT."""
     try:
         key, secret = _resolve_credentials()
     except RuntimeError as exc:
@@ -1126,8 +1293,9 @@ async def _convert_file_impl(
     *,
     enforce_sandbox: bool = True,
 ) -> Any:
-    """Convert a local file on disk with opt-in workspace confinement and overwrite protection."""
+    """Convert a local file on disk with opt-in workspace confinement and `O_NOFOLLOW` overwrite protection."""
     resolved_dest: Optional[Path] = None
+    allow_overwrite = not enforce_sandbox
     if enforce_sandbox:
         if not _is_local_files_enabled():
             return {
@@ -1136,12 +1304,12 @@ async def _convert_file_impl(
                     "Set TWEEKIT_ALLOW_LOCAL_FILES=1 and TWEEKIT_ALLOWED_DIRS=<workspace> on local stdio servers to opt in."
                 )
             }
+        allow_overwrite = os.getenv("TWEEKIT_ALLOW_OVERWRITE", "0").strip().lower() in {"1", "true", "yes"}
         try:
             allowed_dirs = _get_allowed_local_dirs()
             src = _validate_local_read_path(file_path, allowed_dirs)
             if output_path:
                 resolved_dest = _validate_local_write_path(output_path, allowed_dirs)
-                allow_overwrite = os.getenv("TWEEKIT_ALLOW_OVERWRITE", "0").strip().lower() in {"1", "true", "yes"}
                 if resolved_dest.exists() and not allow_overwrite:
                     return {
                         "error": (
@@ -1170,8 +1338,8 @@ async def _convert_file_impl(
     blob = base64.b64encode(raw_bytes).decode("ascii")
 
     result = await _convert_impl(
-        apiKey=apiKey,
-        apiSecret=apiSecret,
+        apiKey=key if (key := apiKey) else "",
+        apiSecret=secret if (secret := apiSecret) else "",
         inext=resolved_inext,
         outfmt=outfmt,
         blob=blob,
@@ -1188,14 +1356,8 @@ async def _convert_file_impl(
     )
 
     if resolved_dest is not None and isinstance(result, (Image, File)) and getattr(result, "data", None) is not None:
-        allow_overwrite = (not enforce_sandbox) or (
-            os.getenv("TWEEKIT_ALLOW_OVERWRITE", "0").strip().lower() in {"1", "true", "yes"}
-        )
-        write_mode = "wb" if allow_overwrite else "xb"
         try:
-            resolved_dest.parent.mkdir(parents=True, exist_ok=True)
-            with open(resolved_dest, write_mode) as fp:
-                fp.write(result.data)  # type: ignore[arg-type]
+            _write_bytes_safely(resolved_dest, result.data, allow_overwrite=allow_overwrite)  # type: ignore[arg-type]
             return {
                 "status": "ok",
                 "input_path": str(src.resolve()),
@@ -1211,6 +1373,8 @@ async def _convert_file_impl(
                     "Choose a new output_path or set TWEEKIT_ALLOW_OVERWRITE=1."
                 )
             }
+        except ValueError as exc:
+            return {"error": str(exc)}
         except Exception as exc:
             return {"error": f"Failed to write output file: {exc}"}
 
@@ -1227,9 +1391,9 @@ async def _convert_file_impl(
     )
 )
 async def convert_file(
-    file_path: Annotated[str, Field(description="Path within TWEEKIT_ALLOWED_DIRS to the input document or image (requires TWEEKIT_ALLOW_LOCAL_FILES=1).")],
+    file_path: Annotated[str, Field(description="Path within TWEEKIT_ALLOWED_DIRS to the input document or image (requires TWEEKIT_ALLOW_LOCAL_FILES=1 and TWEEKIT_ALLOWED_DIRS).")],
     outfmt: Annotated[str, Field(description="Requested output format (e.g., pdf, png, webp, txt).")],
-    output_path: Annotated[Optional[str], Field(description="Optional destination path within TWEEKIT_ALLOWED_DIRS (will not overwrite existing files unless TWEEKIT_ALLOW_OVERWRITE=1).")] = None,
+    output_path: Annotated[Optional[str], Field(description="Optional destination path within TWEEKIT_ALLOWED_DIRS (refuses symlinks and existing files unless TWEEKIT_ALLOW_OVERWRITE=1).")] = None,
     inext: Annotated[Optional[str], Field(description="Override for the input file extension (inferred from file_path when omitted).")] = None,
     noRasterize: Annotated[bool, Field(description="Forward to TweekIT to disable rasterization when supported.")] = False,
     width: Annotated[int, Field(description="Optional pixel width for the converted output.")] = 0,
@@ -1244,8 +1408,8 @@ async def convert_file(
 ) -> Any:
     """Convert a local workspace file when explicitly opted in (`TWEEKIT_ALLOW_LOCAL_FILES=1`).
 
-    Disabled by default and strictly confined to `TWEEKIT_ALLOWED_DIRS` (default: current working
-    directory) with symlink resolution, dotfile/credential blocking, and non-overwrite protection.
+    Disabled by default and over HTTP, strictly confined to `TWEEKIT_ALLOWED_DIRS` with symlink
+    rejection (`lstat` + `O_NOFOLLOW`), dotfile/credential blocking, and non-overwrite protection.
     """
     if not _is_local_files_enabled():
         return {
@@ -1334,7 +1498,7 @@ async def delete_document(
 async def fetch(
     url: Annotated[str, Field(description="Public HTTPS URL to retrieve and normalize.")],
 ) -> Any:
-    """Fetch a public HTTPS URL (with SSRF, redirect, and size protections) and return normalized content."""
+    """Fetch a public HTTPS URL (with connect-time IP pinning, redirect, and size limits) and return content."""
     try:
         raw_bytes, content_type, status_code, final_url = await _safe_fetch_remote(url)
     except ValueError as exc:

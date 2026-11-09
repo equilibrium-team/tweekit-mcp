@@ -658,13 +658,13 @@ Parameters:
 Optional:
 - inext: Override for the input extension. When omitted, the server deduces it from the URL path or the response content-type header.
 - noRasterize, width, height, x1, y1, x2, y2, page, alpha, bgColor: Same semantics as `/convert`.
-- fetchHeaders: Optional allowlisted non-credential HTTP headers (`Accept`, `Accept-Language`, `Cache-Control`, `Range`, `User-Agent`).
+- fetchHeaders: Optional allowlisted non-credential HTTP headers (`Accept`, `Accept-Language`, `Cache-Control`, `If-Modified-Since`, `If-None-Match`, `Range`, `User-Agent`).
 
 Returns: Same as `/convert`—binary image/file payloads surface as FastMCP `Image`/`File` objects; JSON responses are passed through.
 
 #### /convert_file (Opt-In Local Stdio Only)
 
-Description: Converts a local file within an explicitly configured workspace directory without base64-encoding into the LLM context. Disabled by default (`TWEEKIT_ALLOW_LOCAL_FILES=0`) and disabled over HTTP; opt in on local `stdio` servers with `TWEEKIT_ALLOW_LOCAL_FILES=1` and `TWEEKIT_ALLOWED_DIRS=/path/to/workspace`. Resolves symlinks, blocks sensitive credential/dotfile paths, and refuses to overwrite existing files unless `TWEEKIT_ALLOW_OVERWRITE=1` is set.
+Description: Converts a local file within an explicitly configured workspace directory without base64-encoding into the LLM context. Disabled by default (`TWEEKIT_ALLOW_LOCAL_FILES=0`) and always disabled over HTTP; opt in on local `stdio` servers by setting both `TWEEKIT_ALLOW_LOCAL_FILES=1` and `TWEEKIT_ALLOWED_DIRS=/path/to/workspace`. Rejects existing and dangling symlinks (`lstat` + `O_NOFOLLOW`), blocks sensitive credential/dotfile paths, and refuses to overwrite existing files unless `TWEEKIT_ALLOW_OVERWRITE=1` is set.
 
 #### /search
 
