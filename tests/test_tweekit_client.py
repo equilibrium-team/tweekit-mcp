@@ -1,8 +1,9 @@
 import asyncio
+from pathlib import Path
 
 import pytest
 import respx
-from fastmcp.client.transports import StreamableHttpTransport
+from fastmcp.client.transports import PythonStdioTransport, StreamableHttpTransport
 from httpx import Response
 
 from clients.python import tweekit_client
@@ -65,6 +66,27 @@ def test_convert_file_sends_headers_not_tool_credentials(tmp_path):
     assert calls[-1][1]["bgColor"] == ""
     assert "apiKey" not in calls[-1][1]
     assert "apiSecret" not in calls[-1][1]
+
+
+def test_stdio_script_target_forwards_credentials_via_env(tmp_path):
+    script = tmp_path / "server.py"
+    script.write_text("# test server stub\n")
+
+    client = tweekit_client.TweekitClient(
+        server_url=script,
+        api_key="stdio-key",
+        api_secret="stdio-secret",
+    )
+
+    async def runner():
+        async with client:
+            assert isinstance(client._client.target, PythonStdioTransport)
+            assert client._client.target.env["TWEEKIT_API_KEY"] == "stdio-key"
+            assert client._client.target.env["TWEEKIT_API_SECRET"] == "stdio-secret"
+            return await client.doctype("pdf")
+
+    res = asyncio.run(runner())
+    assert res["status"] == "ok"
 
 
 def test_convert_url():

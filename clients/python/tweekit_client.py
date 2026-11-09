@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any
 
 from fastmcp import Client
-from fastmcp.client.transports import StreamableHttpTransport
+from fastmcp.client.transports import PythonStdioTransport, StreamableHttpTransport
 
 import server as _server_mod
 
@@ -49,11 +49,11 @@ class TweekitClient:
 
     def __init__(
         self,
-        server_url: str | None = None,
+        server_url: str | Path | Any = None,
         api_key: str | None = None,
         api_secret: str | None = None,
     ) -> None:
-        self.server_url = server_url or os.getenv("TWEEKIT_MCP_SERVER", "https://mcp.tweekit.io/mcp")
+        self.server_url = server_url if server_url is not None else os.getenv("TWEEKIT_MCP_SERVER", "https://mcp.tweekit.io/mcp")
         self.api_key = api_key or os.getenv("TWEEKIT_API_KEY")
         self.api_secret = api_secret or os.getenv("TWEEKIT_API_SECRET")
         self._client: Client | None = None
@@ -64,8 +64,34 @@ class TweekitClient:
             headers["ApiKey"] = self.api_key
         if self.api_secret:
             headers["ApiSecret"] = self.api_secret
-        if headers and isinstance(self.server_url, str) and self.server_url.startswith(("http://", "https://")):
-            return StreamableHttpTransport(self.server_url, headers=headers)
+
+        if isinstance(self.server_url, str) and self.server_url.startswith(("http://", "https://")):
+            if headers:
+                return StreamableHttpTransport(self.server_url, headers=headers)
+            return self.server_url
+
+        if isinstance(self.server_url, Path) or (
+            isinstance(self.server_url, str) and self.server_url.endswith(".py")
+        ):
+            env = dict(os.environ)
+            if self.api_key:
+                env["TWEEKIT_API_KEY"] = self.api_key
+            if self.api_secret:
+                env["TWEEKIT_API_SECRET"] = self.api_secret
+            return PythonStdioTransport(
+                script_path=self.server_url,
+                args=["--transport", "stdio"],
+                env=env,
+            )
+
+        if (self.api_key or self.api_secret) and (
+            os.getenv("TWEEKIT_API_KEY") != self.api_key
+            or os.getenv("TWEEKIT_API_SECRET") != self.api_secret
+        ):
+            raise ValueError(
+                "Explicit api_key/api_secret can only be forwarded automatically to http(s) URLs or local .py "
+                "script paths. For custom transports, pass credentials via transport headers or environment variables."
+            )
         return self.server_url
 
     async def __aenter__(self) -> "TweekitClient":

@@ -83,22 +83,35 @@ def _resolve_request_credentials() -> tuple[str, str]:
     )
     auth = (req_headers.get("authorization") or "").strip()
     bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-    key = (
+    header_key = (
         req_headers.get("apikey")
         or req_headers.get("x-api-key")
         or bearer
-        or os.getenv("TWEEKIT_API_KEY")
         or ""
     ).strip()
-    secret = (
+    header_secret = (
         req_headers.get("apisecret")
         or req_headers.get("x-api-secret")
-        or os.getenv("TWEEKIT_API_SECRET")
         or ""
     ).strip()
-    if not key or not secret:
+    if header_key or header_secret:
+        if not (header_key and header_secret):
+            raise RuntimeError("Incomplete TweekIT HTTP header credentials: supply both ApiKey and ApiSecret headers.")
+        return header_key, header_secret
+
+    allow_http_env = os.getenv("TWEEKIT_ALLOW_ENV_CREDENTIALS_OVER_HTTP", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if not allow_http_env:
+        raise RuntimeError("Missing TweekIT HTTP header credentials: supply both ApiKey and ApiSecret headers.")
+
+    env_key = (os.getenv("TWEEKIT_API_KEY") or "").strip()
+    env_secret = (os.getenv("TWEEKIT_API_SECRET") or "").strip()
+    if not env_key or not env_secret:
         raise RuntimeError("Missing TweekIT credentials in HTTP headers (ApiKey/ApiSecret) or environment.")
-    return key, secret
+    return env_key, env_secret
 
 
 @mcp.tool()

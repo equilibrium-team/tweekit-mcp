@@ -465,7 +465,7 @@ def _resolve_credentials(
     provided_key: Optional[str] = None,
     provided_secret: Optional[str] = None,
 ) -> tuple[str, str]:
-    """Resolve TweekIT API credentials from SDK args, atomic HTTP header pairs, or env vars."""
+    """Resolve TweekIT API credentials from SDK args, atomic HTTP header pairs, or stdio env vars."""
     if provided_key is not None or provided_secret is not None:
         api_key = (provided_key or os.getenv("TWEEKIT_API_KEY") or "").strip()
         api_secret = (provided_secret or os.getenv("TWEEKIT_API_SECRET") or "").strip()
@@ -490,6 +490,17 @@ def _resolve_credentials(
                     "Incomplete TweekIT HTTP header credentials: supply both ApiKey and ApiSecret headers."
                 )
             return header_key, header_secret
+
+        is_http = _ACTIVE_TRANSPORT == "streamable-http" or _has_active_http_request()
+        allow_http_env = os.getenv("TWEEKIT_ALLOW_ENV_CREDENTIALS_OVER_HTTP", "0").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if is_http and not allow_http_env:
+            raise RuntimeError(
+                "Missing TweekIT HTTP header credentials: supply both ApiKey and ApiSecret headers."
+            )
 
         api_key = (os.getenv("TWEEKIT_API_KEY") or "").strip()
         api_secret = (os.getenv("TWEEKIT_API_SECRET") or "").strip()
@@ -666,8 +677,12 @@ async def _safe_fetch_remote(
 
     timeout = httpx.Timeout(20.0, read=60.0)
     transport = httpx.AsyncHTTPTransport(trust_env=False)
-    pinned_backend = _PinnedPublicDNSBackend(transport._pool._network_backend)
-    transport._pool._network_backend = pinned_backend
+    pool = getattr(transport, "_pool", None)
+    inner_backend = getattr(pool, "_network_backend", None)
+    if pool is None or inner_backend is None:
+        raise RuntimeError("Incompatible httpx/httpcore transport layout: unable to install DNS IP pinning.")
+    pinned_backend = _PinnedPublicDNSBackend(inner_backend)
+    pool._network_backend = pinned_backend
     pinned_backend.register(initial_host, initial_port, initial_ips)
 
     async with httpx.AsyncClient(transport=transport, timeout=timeout, follow_redirects=False) as client:
@@ -846,6 +861,25 @@ def _validate_local_write_path(output_path: str, allowed_dirs: List[Path]) -> Pa
         raise ValueError(f"Disallowed or unsafe output file extension: '.{out_ext or ''}'.")
 
     return resolved_dest
+
+
+def _read_bytes_safely(src: Path, *, enforce_sandbox: bool) -> bytes:
+    """Read `src` bytes using `O_NOFOLLOW` when sandboxed so symlinks swapped post-check fail closed."""
+    if not enforce_sandbox:
+        return src.read_bytes()
+    max_bytes = int(os.getenv("TWEEKIT_MAX_LOCAL_FILE_BYTES", str(DEFAULT_MAX_LOCAL_FILE_BYTES)))
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_BINARY", 0)
+    try:
+        fd = os.open(str(src), flags)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise ValueError("Symbolic links are not permitted in local file paths.") from exc
+        raise
+    with os.fdopen(fd, "rb") as fp:
+        data = fp.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError(f"Input file exceeds maximum allowed size ({max_bytes} bytes).")
+    return data
 
 
 def _write_bytes_safely(dest: Path, data: bytes, *, allow_overwrite: bool) -> None:
@@ -1327,7 +1361,9 @@ async def _convert_file_impl(
             resolved_dest = Path(output_path).expanduser().resolve()
 
     try:
-        raw_bytes = src.read_bytes()
+        raw_bytes = _read_bytes_safely(src, enforce_sandbox=enforce_sandbox)
+    except ValueError as exc:
+        return {"error": str(exc)}
     except Exception as exc:
         return {"error": f"Failed to read input file: {exc}"}
 

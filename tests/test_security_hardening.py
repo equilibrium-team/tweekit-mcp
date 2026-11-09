@@ -81,6 +81,12 @@ def test_http_header_credentials_authenticate_mcp_tool_and_reject_partial_header
     with TestClient(app, base_url="https://mcp.tweekit.io") as client:
         resp = client.post("/mcp/", json=call_body, headers=full_headers, follow_redirects=False)
         partial_resp = client.post("/mcp/", json=call_body, headers=partial_headers, follow_redirects=False)
+        no_hdr_resp = client.post(
+            "/mcp/",
+            json=call_body,
+            headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
+            follow_redirects=False,
+        )
 
     assert resp.status_code == 200
     assert route.call_count == 1
@@ -89,6 +95,8 @@ def test_http_header_credentials_authenticate_mcp_tool_and_reject_partial_header
     assert upstream_req.headers["apisecret"] == "hdr-secret"
     assert partial_resp.status_code == 200
     assert "Incomplete TweekIT HTTP header credentials" in partial_resp.text
+    assert no_hdr_resp.status_code == 200
+    assert "Missing TweekIT HTTP header credentials" in no_hdr_resp.text
 
 
 @pytest.mark.asyncio
@@ -335,3 +343,50 @@ def test_plugin_proxy_ssrf_and_body_credential_exclusion(proxy_app):
         headers={"X-Api-Key": "test-key", "X-Api-Secret": "test-secret"},
     )
     assert resp.status_code == 400
+
+
+def test_firebase_functions_credentials_reject_partial_headers_and_http_env_fallback(monkeypatch):
+    import importlib.util
+    import sys
+    import types
+
+    ff_mod = types.ModuleType("firebase_functions")
+    https_fn_mod = types.ModuleType("firebase_functions.https_fn")
+    https_fn_mod.Request = object  # type: ignore[attr-defined]
+    https_fn_mod.Response = object  # type: ignore[attr-defined]
+    https_fn_mod.on_request = lambda *a, **kw: (lambda fn: fn)  # type: ignore[attr-defined]
+    ff_mod.https_fn = https_fn_mod  # type: ignore[attr-defined]
+    ff_opts_mod = types.ModuleType("firebase_functions.options")
+    ff_opts_mod.set_global_options = lambda **kw: None  # type: ignore[attr-defined]
+    wz_mod = types.ModuleType("werkzeug")
+    wz_wrappers_mod = types.ModuleType("werkzeug.wrappers")
+    wz_wrappers_mod.Response = object  # type: ignore[attr-defined]
+
+    monkeypatch.setitem(sys.modules, "firebase_functions", ff_mod)
+    monkeypatch.setitem(sys.modules, "firebase_functions.https_fn", https_fn_mod)
+    monkeypatch.setitem(sys.modules, "firebase_functions.options", ff_opts_mod)
+    monkeypatch.setitem(sys.modules, "werkzeug", wz_mod)
+    monkeypatch.setitem(sys.modules, "werkzeug.wrappers", wz_wrappers_mod)
+
+    spec = importlib.util.spec_from_file_location("functions_main_mod", Path("functions/main.py"))
+    assert spec is not None and spec.loader is not None
+    fn_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fn_mod)
+
+    monkeypatch.setenv("TWEEKIT_API_KEY", "env-k")
+    monkeypatch.setenv("TWEEKIT_API_SECRET", "env-s")
+    monkeypatch.delenv("TWEEKIT_ALLOW_ENV_CREDENTIALS_OVER_HTTP", raising=False)
+
+    # No headers -> must NOT silently use env credentials over HTTP
+    monkeypatch.setattr(fn_mod, "get_http_headers", lambda **_: {})
+    with pytest.raises(RuntimeError, match="Missing TweekIT HTTP header credentials"):
+        fn_mod._resolve_request_credentials()
+
+    # Partial headers -> must NOT mix header key with env secret
+    monkeypatch.setattr(fn_mod, "get_http_headers", lambda **_: {"apikey": "only-key"})
+    with pytest.raises(RuntimeError, match="Incomplete TweekIT HTTP header credentials"):
+        fn_mod._resolve_request_credentials()
+
+    # Complete header pair -> succeeds
+    monkeypatch.setattr(fn_mod, "get_http_headers", lambda **_: {"apikey": "hk", "apisecret": "hs"})
+    assert fn_mod._resolve_request_credentials() == ("hk", "hs")
