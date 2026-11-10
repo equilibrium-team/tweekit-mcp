@@ -11,6 +11,8 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    env:
+      MCP_DNS_PRIVATE_KEY: ${{ secrets.MCP_DNS_PRIVATE_KEY }}
 
     steps:
       - name: Checkout repository
@@ -41,8 +43,36 @@ jobs:
           curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
           chmod +x mcp-publisher
 
-      - name: Login to MCP Registry
+      - name: Wait for PyPI package propagation
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "Waiting for PyPI to serve tweekit==${VERSION}..."
+          READY=0
+          for i in $(seq 1 36); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/tweekit/${VERSION}/json" || true)
+            if [ "$STATUS" = "200" ]; then
+              echo "PyPI package tweekit==${VERSION} is live (attempt ${i})."
+              READY=1
+              break
+            fi
+            echo "Attempt ${i}/36: HTTP ${STATUS}, retrying in 5s..."
+            sleep 5
+          done
+          if [ "$READY" -ne 1 ]; then
+            echo "::error::Timed out waiting for PyPI to serve tweekit==${VERSION}." >&2
+            exit 1
+          fi
+
+      - name: Login to MCP Registry (GitHub OIDC)
         run: ./mcp-publisher login github-oidc
 
-      - name: Publish server to MCP Registry
+      - name: Publish server to MCP Registry (io.github.equilibrium-team/tweekit)
         run: ./mcp-publisher publish
+
+      - name: Publish domain-verified entry (io.tweekit/mcp) if DNS key configured
+        if: env.MCP_DNS_PRIVATE_KEY != ''
+        run: |
+          jq '.name = "io.tweekit/mcp"' server.json > server.domain.json
+          mv server.domain.json server.json
+          ./mcp-publisher login dns --domain tweekit.io --private-key "${MCP_DNS_PRIVATE_KEY}"
+          ./mcp-publisher publish

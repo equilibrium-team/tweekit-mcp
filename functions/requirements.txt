@@ -4,3 +4,7 @@ certifi>=2026.10.23
 fastmcp>=4.1.6
 mcp>=2.3.0
 httpx>=0.28.1
+httpcore>=1.0.9
+starlette>=1.7.0; python_version < '3.11'
+starlette>=1.10.0; python_version >= '3.11'
+uvicorn>=0.54.0

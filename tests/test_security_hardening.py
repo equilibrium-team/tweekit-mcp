@@ -390,3 +390,149 @@ def test_firebase_functions_credentials_reject_partial_headers_and_http_env_fall
     # Complete header pair -> succeeds
     monkeypatch.setattr(fn_mod, "get_http_headers", lambda **_: {"apikey": "hk", "apisecret": "hs"})
     assert fn_mod._resolve_request_credentials() == ("hk", "hs")
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_onprem_miner_renderery_local_only_zero_egress_and_noauth(monkeypatch, tmp_path):
+    """Verify On-Premises / Localhost Miner Renderery routing, TWEEKIT_LOCAL_ONLY=1 zero cloud egress, and NOAUTH loopback."""
+    import json
+    from tweekit_mcp import TweekitDirectClient
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    src = workspace / "blueprint.dwg"
+    src.write_bytes(b"DWG_CAD_BYTES")
+    dest = workspace / "blueprint.png"
+
+    monkeypatch.setenv("TWEEKIT_ALLOW_LOCAL_FILES", "1")
+    monkeypatch.setenv("TWEEKIT_ALLOWED_DIRS", str(workspace))
+    monkeypatch.setenv("TWEEKIT_LOCAL_ONLY", "1")
+    monkeypatch.setenv("TWEEKIT_MINER_NOAUTH", "1")
+    monkeypatch.delenv("TWEEKIT_API_KEY", raising=False)
+    monkeypatch.delenv("TWEEKIT_API_SECRET", raising=False)
+
+    # 1. With TWEEKIT_LOCAL_ONLY=1 and no TWEEKIT_API_BASE_URL, defaults automatically to LOCAL_MINER_BASE_URL (127.0.0.1:16377)
+    assert server._resolve_api_base_url() == "http://127.0.0.1:16377/api/image/"
+
+    mode_fn = getattr(server.runtime_mode, "fn", server.runtime_mode)
+    mode_payload = json.loads(await mode_fn())
+    assert mode_payload["execution_mode"] == "onprem-miner-renderery"
+    assert mode_payload["local_only_zero_egress"] is True
+    assert mode_payload["miner_noauth_loopback"] is True
+
+    # 2. Local convert_file routes to localhost:16377 without cloud credentials and reports onprem-miner-renderery
+    local_route = respx.post("http://127.0.0.1:16377/api/image/").mock(
+        return_value=Response(
+            200,
+            content=b"LOCAL_MINER_PNG",
+            headers={
+                "content-type": "image/png",
+                "X-CPUCoinMiner-TweekITScriptVer": "0.13",
+            },
+        )
+    )
+    res_local = await tool_fn(server.convert_file)(
+        file_path=str(src),
+        outfmt="png",
+        output_path=str(dest),
+    )
+    assert res_local["status"] == "ok"
+    assert res_local["execution_mode"] == "onprem-miner-renderery"
+    assert local_route.called
+    assert dest.read_bytes() == b"LOCAL_MINER_PNG"
+
+    # 3. Outbound internet tools (convert_url, fetch, search) are blocked in TWEEKIT_LOCAL_ONLY=1 mode
+    res_url = await tool_fn(server.convert_url)(url="https://example.com/doc.pdf", outfmt="png")
+    res_fetch = await tool_fn(server.fetch)(url="https://example.com/doc.pdf")
+    res_search = await tool_fn(server.search)(query="tweekit")
+    assert "TWEEKIT_LOCAL_ONLY=1" in res_url["error"]
+    assert "TWEEKIT_LOCAL_ONLY=1" in res_fetch["error"]
+    assert "TWEEKIT_LOCAL_ONLY=1" in res_search["error"]
+
+    # 4. Pointing TWEEKIT_API_BASE_URL at an external cloud endpoint while TWEEKIT_LOCAL_ONLY=1 is rejected
+    monkeypatch.setenv("TWEEKIT_API_BASE_URL", "https://dapp.tweekit.io/tweekit/api/image/")
+    res_cloud_blocked = await tool_fn(server.convert)(inext="png", outfmt="webp", blob="QUJD")
+    assert "error" in res_cloud_blocked
+    assert "TWEEKIT_LOCAL_ONLY=1" in res_cloud_blocked["error"]
+
+    # 5. Plain HTTP to a non-loopback host not in TWEEKIT_ONPREM_HOSTS is rejected
+    monkeypatch.setenv("TWEEKIT_LOCAL_ONLY", "0")
+    monkeypatch.setenv("TWEEKIT_API_BASE_URL", "http://evil.example.com/api/image/")
+    with pytest.raises(ValueError, match="Plain HTTP"):
+        server._resolve_api_base_url()
+
+    # 6. TweekitDirectClient(local_miner=True) routes directly to http://127.0.0.1:16377/api/image/
+    monkeypatch.delenv("TWEEKIT_API_BASE_URL", raising=False)
+    async with TweekitDirectClient(local_miner=True) as direct_miner:
+        assert direct_miner.base_url == "http://127.0.0.1:16377/api/image/"
+        img = await direct_miner.convert_bytes(b"RAW", inext="psd", outfmt="png")
+        assert getattr(img, "data", None) == b"LOCAL_MINER_PNG"
+
+
+@pytest.mark.asyncio
+async def test_require_local_miner_for_files_and_ide_config_segment_blocking(monkeypatch, tmp_path):
+    """Verify TWEEKIT_REQUIRE_LOCAL_MINER_FOR_FILES=1 and IDE/agent config directory blocking (.claude, .vscode)."""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    doc = workspace / "report.docx"
+    doc.write_bytes(b"DOCX_BYTES")
+
+    claude_dir = workspace / ".claude"
+    claude_dir.mkdir()
+    claude_secret = claude_dir / "settings.json"
+    claude_secret.write_text("{}")
+
+    monkeypatch.setenv("TWEEKIT_ALLOW_LOCAL_FILES", "1")
+    monkeypatch.setenv("TWEEKIT_ALLOWED_DIRS", str(workspace))
+    monkeypatch.setenv("TWEEKIT_API_KEY", "k")
+    monkeypatch.setenv("TWEEKIT_API_SECRET", "s")
+
+    # Blocking .claude config directory inside workspace
+    res_claude = await tool_fn(server.convert_file)(file_path=str(claude_secret), outfmt="txt")
+    assert "error" in res_claude
+    assert "sensitive" in res_claude["error"].lower()
+
+    # Blocking cloud conversion of local files when TWEEKIT_REQUIRE_LOCAL_MINER_FOR_FILES=1
+    monkeypatch.setenv("TWEEKIT_REQUIRE_LOCAL_MINER_FOR_FILES", "1")
+    res_req_local = await tool_fn(server.convert_file)(file_path=str(doc), outfmt="pdf")
+    assert "error" in res_req_local
+    assert "TWEEKIT_REQUIRE_LOCAL_MINER_FOR_FILES=1" in res_req_local["error"]
+
+
+def test_local_miner_cli_flag_fails_closed_on_conflicting_local_only_zero_or_cloud_url(monkeypatch):
+    """Verify `--local-miner` refuses to start when TWEEKIT_LOCAL_ONLY=0 or a cloud TWEEKIT_API_BASE_URL is configured."""
+    import argparse
+
+    # Snapshot module global and env vars via monkeypatch so teardown restores clean state for subsequent tests
+    monkeypatch.setattr(server, "BASE_URL", server.CLOUD_BASE_URL)
+    monkeypatch.setenv("TWEEKIT_LOCAL_ONLY", "0")
+    monkeypatch.setenv("TWEEKIT_MINER_LOCAL", "0")
+    monkeypatch.setenv("TWEEKIT_API_BASE_URL", server.CLOUD_BASE_URL)
+
+    # 1. Explicit TWEEKIT_LOCAL_ONLY=0 + cloud TWEEKIT_API_BASE_URL + --local-miner -> refuses to start
+    args_conflict = argparse.Namespace(
+        transport="stdio",
+        host="127.0.0.1",
+        port=8080,
+        api_base_url=None,
+        local_miner=True,
+    )
+    with pytest.raises(ValueError, match="--local-miner conflicts with explicit TWEEKIT_LOCAL_ONLY=0"):
+        server._apply_startup_cli_flags(args_conflict)
+
+    # 2. Unset TWEEKIT_LOCAL_ONLY + cloud TWEEKIT_API_BASE_URL + --local-miner -> sets TWEEKIT_LOCAL_ONLY=1 and rejects cloud URL
+    monkeypatch.delenv("TWEEKIT_LOCAL_ONLY", raising=False)
+    monkeypatch.delenv("TWEEKIT_MINER_LOCAL", raising=False)
+    monkeypatch.setenv("TWEEKIT_API_BASE_URL", "https://dapp.tweekit.io/tweekit/api/image/")
+    with pytest.raises(ValueError, match="TWEEKIT_LOCAL_ONLY=1"):
+        server._apply_startup_cli_flags(args_conflict)
+
+    # 3. Clean --local-miner sets TWEEKIT_LOCAL_ONLY=1 and TWEEKIT_MINER_LOCAL=1 and resolves to local Miner Renderery
+    monkeypatch.delenv("TWEEKIT_API_BASE_URL", raising=False)
+    monkeypatch.delenv("TWEEKIT_LOCAL_ONLY", raising=False)
+    monkeypatch.delenv("TWEEKIT_MINER_LOCAL", raising=False)
+    resolved = server._apply_startup_cli_flags(args_conflict)
+    assert resolved == "http://127.0.0.1:16377/api/image/"
+    assert server._is_local_only_mode() is True
+    assert server._is_local_miner_enabled() is True

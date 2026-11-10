@@ -5,6 +5,18 @@ All notable changes to the TweekIT MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-11-10
+
+### Added
+- **On-Premises & Localhost Miner Renderery Support (`--local-miner`, `TWEEKIT_API_BASE_URL`, `TWEEKIT_LOCAL_ONLY=1`)**: Added first-class support for routing `tweekit-mcp` and `TweekitDirectClient(local_miner=True)` to a local or on-premises **Miner Renderery** (`http://127.0.0.1:16377/api/image/` or `http://127.0.0.1:5000/api/image/`), serving as the last-mile MCP integration for the **New Miner Installation Initiative**.
+- **Zero-Cloud-Egress Enforcement (`TWEEKIT_LOCAL_ONLY=1` & `TWEEKIT_REQUIRE_LOCAL_MINER_FOR_FILES=1`)**: Guarantees that local workspace files converted via `convert_file` or `convert` never leave the host machine or private LAN (`TWEEKIT_ONPREM_HOSTS`) and blocks outbound internet tools (`convert_url`, `fetch`, `search`) when running in air-gapped local mode.
+- **Loopback `NOAUTH;NODB` Miner Renderery Mode (`TWEEKIT_MINER_NOAUTH=1`)**: Allows local `stdio` MCP sessions and `TweekitDirectClient` to communicate with a loopback `NOAUTH;NODB` Miner Renderery without requiring cloud portal API credentials, while forwarding `X-CPUCoinMiner-*` diagnostic headers.
+- **Runtime Mode Introspection Resource (`config://tweekit-runtime-mode`)**: Added an MCP resource reporting `execution_mode` (`"onprem-miner-renderery"` vs `"cloud-cgn"`), `api_base_url`, `local_only_zero_egress`, and `local_files_enabled`.
+- **On-Premises Miner Renderery Specification & Security Policy**: Added [`docs/onprem-miner-renderery-spec.md`](docs/onprem-miner-renderery-spec.md), [`SECURITY.md`](SECURITY.md), [`glama.json`](glama.json), and [`smithery.yaml`](smithery.yaml).
+
+### Changed
+- **Explicit Direct Runtime Dependencies & CI Registry Sync**: Declared `httpcore>=1.0.9`, `starlette>=1.7.0` (`1.10.0` on Python 3.11+), and `uvicorn>=0.54.0` explicitly in `pyproject.toml`, `functions/requirements.txt`, and `scripts/build_claude_bundle.py`, expanded `_SENSITIVE_PATH_SEGMENTS` to block IDE/agent config directories (`.vscode`, `.idea`, `.github`, `.claude`, `.cursor`, `.gemini`), and updated `.github/workflows/publish-mcp.yml` to wait for PyPI version propagation (failing closed on timeout) before running `mcp-publisher publish`.
+
 ## [1.8.1] - 2026-11-09
 
 ### Changed (Breaking Security Hardening)

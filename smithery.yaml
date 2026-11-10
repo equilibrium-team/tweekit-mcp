@@ -1,0 +1,35 @@
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      tweekitApiKey:
+        type: string
+        description: "TweekIT API key issued from the TweekIT account portal (optional when targeting a loopback NOAUTH Miner Renderery)."
+      tweekitApiSecret:
+        type: string
+        description: "TweekIT API secret paired with tweekitApiKey (optional when targeting a loopback NOAUTH Miner Renderery)."
+      tweekitApiBaseUrl:
+        type: string
+        description: "Optional TweekIT API or On-Premises Miner Renderery URL (e.g., http://127.0.0.1:16377/api/image/ for localhost processing)."
+      tweekitLocalOnly:
+        type: boolean
+        description: "When true, enforces zero-cloud-egress mode (TWEEKIT_LOCAL_ONLY=1) against a local or on-premises Miner Renderery."
+        default: false
+      tweekitMinerNoauth:
+        type: boolean
+        description: "When true, enables loopback NOAUTH;NODB Miner Renderery mode (TWEEKIT_MINER_NOAUTH=1)."
+        default: false
+    required: []
+  commandFunction: |-
+    (config) => ({
+      command: "uvx",
+      args: ["tweekit", "--transport", "stdio"],
+      env: {
+        ...(config.tweekitApiKey ? { TWEEKIT_API_KEY: config.tweekitApiKey } : {}),
+        ...(config.tweekitApiSecret ? { TWEEKIT_API_SECRET: config.tweekitApiSecret } : {}),
+        ...(config.tweekitApiBaseUrl ? { TWEEKIT_API_BASE_URL: config.tweekitApiBaseUrl } : {}),
+        ...(config.tweekitLocalOnly ? { TWEEKIT_LOCAL_ONLY: "1", TWEEKIT_MINER_LOCAL: "1" } : {}),
+        ...(config.tweekitMinerNoauth ? { TWEEKIT_MINER_NOAUTH: "1" } : {})
+      }
+    })

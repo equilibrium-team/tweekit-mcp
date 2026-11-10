@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
   "name": "io.github.equilibrium-team/tweekit",
   "title": "TweekIT MCP Server",
-  "description": "Preflight and convert 450+ file types for AI workflows via TweekIT MCP & SDK (Equilibrium).",
-  "version": "1.8.1",
+  "description": "Preflight and convert 450+ file types for AI workflows via TweekIT MCP & SDK (Cloud CGN or On-Prem Miner Renderery).",
+  "version": "1.8.2",
   "websiteUrl": "https://www.tweekit.io/",
   "repository": {
     "source": "github",
@@ -15,7 +15,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "tweekit",
-      "version": "1.8.1",
+      "version": "1.8.2",
       "runtimeHint": "uvx",
       "packageArguments": [
         {
@@ -30,16 +30,58 @@
       "environmentVariables": [
         {
           "name": "TWEEKIT_API_KEY",
-          "description": "TweekIT API key issued from the TweekIT account portal.",
-          "isRequired": true,
+          "description": "TweekIT API key issued from the TweekIT account portal (optional when targeting a loopback NOAUTH Miner Renderery via TWEEKIT_MINER_NOAUTH=1).",
+          "isRequired": false,
           "isSecret": true,
           "format": "string"
         },
         {
           "name": "TWEEKIT_API_SECRET",
-          "description": "API secret paired with TWEEKIT_API_KEY for authenticated conversions.",
-          "isRequired": true,
+          "description": "API secret paired with TWEEKIT_API_KEY for authenticated conversions (optional when TWEEKIT_MINER_NOAUTH=1 is enabled on loopback).",
+          "isRequired": false,
           "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "TWEEKIT_API_BASE_URL",
+          "description": "Optional TweekIT API or On-Premises Miner Renderery URL (e.g., http://127.0.0.1:16377/api/image/ for localhost processing).",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "TWEEKIT_MINER_LOCAL",
+          "description": "Optional flag ('1' or '0'). When '1', defaults API routing to the local On-Premises Miner Renderery (http://127.0.0.1:16377/api/image/).",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "TWEEKIT_LOCAL_ONLY",
+          "description": "Optional flag ('1' or '0'). When '1', enforces localhost/on-prem Miner Renderery routing and blocks third-party cloud egress.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "TWEEKIT_MINER_NOAUTH",
+          "description": "Optional flag ('1' or '0'). When '1', allows loopback Miner Renderery requests without cloud API credentials.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "TWEEKIT_ONPREM_HOSTS",
+          "description": "Optional comma-separated list of trusted private LAN Miner Renderery hostnames or IPs permitted under TWEEKIT_LOCAL_ONLY=1.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "TWEEKIT_REQUIRE_LOCAL_MINER_FOR_FILES",
+          "description": "Optional flag ('1' or '0'). When '1', convert_file refuses to upload local files unless routed to a local or on-prem Miner Renderery.",
+          "isRequired": false,
+          "isSecret": false,
           "format": "string"
         }
       ]

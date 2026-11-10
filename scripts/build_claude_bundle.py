@@ -21,7 +21,11 @@ REQUIRED_DEPENDENCIES = [
     "fastmcp>=4.1.6",
     "mcp>=2.3.0",
     "httpx>=0.28.1",
+    "httpcore>=1.0.9",
     "fastapi>=0.162.2",
+    "starlette>=1.7.0; python_version < '3.11'",
+    "starlette>=1.10.0; python_version >= '3.11'",
+    "uvicorn>=0.54.0",
 ]
 
 BOOTSTRAP_SCRIPT = '''#!/usr/bin/env python3

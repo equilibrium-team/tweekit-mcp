@@ -142,11 +142,12 @@ def test_tweekit_mcp_package_exports_and_batch_convert(tmp_path):
     import tweekit
     import tweekit_mcp
 
-    assert tweekit.__version__ == "1.8.1"
+    assert tweekit.__version__ == "1.8.2"
     assert tweekit.TweekitClient is tweekit_mcp.TweekitClient
-    assert tweekit_mcp.__version__ == "1.8.1"
+    assert tweekit_mcp.__version__ == "1.8.2"
     assert tweekit_mcp.__author__ == "AMPS dba Equilibrium"
     assert "psd" in tweekit_mcp.EXTENSIVE_SUPPORTED_EXTENSIONS
+    assert tweekit.LOCAL_MINER_BASE_URL == "http://127.0.0.1:16377/api/image/"
 
     doc = tmp_path / "sheet.xls"
     doc.write_bytes(b"XLSDATA")

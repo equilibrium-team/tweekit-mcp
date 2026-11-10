@@ -335,17 +335,33 @@ class TweekitClient:
 
 
 class TweekitDirectClient:
-    """Direct async Python SDK for TweekIT REST API (no MCP server intermediary needed)."""
+    """Direct async Python SDK for TweekIT REST API or On-Premises Miner Renderery (no MCP hop required)."""
 
     def __init__(
         self,
         api_key: str | None = None,
         api_secret: str | None = None,
         base_url: str | None = None,
+        *,
+        local_miner: bool = False,
     ) -> None:
         self.api_key = api_key or os.getenv("TWEEKIT_API_KEY")
         self.api_secret = api_secret or os.getenv("TWEEKIT_API_SECRET")
-        self.base_url = (base_url or os.getenv("TWEEKIT_API_BASE_URL") or _server_mod.BASE_URL).rstrip("/") + "/"
+        self.local_miner = local_miner
+        if base_url:
+            self._explicit_base_url: str | None = base_url.rstrip("/") + "/"
+        elif local_miner:
+            self._explicit_base_url = _server_mod.LOCAL_MINER_BASE_URL
+        else:
+            self._explicit_base_url = None
+        try:
+            self.base_url = _server_mod._resolve_api_base_url(self._explicit_base_url)
+        except ValueError:
+            self.base_url = (
+                self._explicit_base_url
+                or os.getenv("TWEEKIT_API_BASE_URL")
+                or _server_mod.BASE_URL
+            ).rstrip("/") + "/"
 
     async def __aenter__(self) -> "TweekitDirectClient":
         return self
@@ -359,12 +375,21 @@ class TweekitDirectClient:
         return _server_mod.recommend_ai_format(filename_or_ext, target_provider=target_provider)
 
     async def version(self) -> str:
+        if hasattr(_server_mod, "_version_impl"):
+            return await _server_mod._version_impl(base_url=self._explicit_base_url)
         fn = getattr(_server_mod.version, "fn", _server_mod.version)
         return await fn()
 
     async def doctype(self, extension: str = "*") -> dict[str, Any]:
-        key, secret = _server_mod._resolve_credentials(self.api_key, self.api_secret)
-        return await _server_mod._doctype_impl(apiKey=key, apiSecret=secret, extension=extension)
+        key, secret = _server_mod._resolve_credentials(
+            self.api_key, self.api_secret, base_url=self._explicit_base_url
+        )
+        return await _server_mod._doctype_impl(
+            apiKey=key,
+            apiSecret=secret,
+            extension=extension,
+            base_url=self._explicit_base_url,
+        )
 
     async def convert_bytes(
         self,
@@ -383,7 +408,9 @@ class TweekitDirectClient:
         alpha: bool = True,
         bgcolor: str = "",
     ) -> Any:
-        key, secret = _server_mod._resolve_credentials(self.api_key, self.api_secret)
+        key, secret = _server_mod._resolve_credentials(
+            self.api_key, self.api_secret, base_url=self._explicit_base_url
+        )
         blob = base64.b64encode(data).decode("ascii")
         return await _server_mod._convert_impl(
             apiKey=key,
@@ -401,6 +428,7 @@ class TweekitDirectClient:
             page=page,
             alpha=alpha,
             bgColor=bgcolor,
+            base_url=self._explicit_base_url,
         )
 
     async def convert_file(
@@ -421,7 +449,9 @@ class TweekitDirectClient:
         alpha: bool = True,
         bgcolor: str = "",
     ) -> Any:
-        key, secret = _server_mod._resolve_credentials(self.api_key, self.api_secret)
+        key, secret = _server_mod._resolve_credentials(
+            self.api_key, self.api_secret, base_url=self._explicit_base_url
+        )
         return await _server_mod._convert_file_impl(
             apiKey=key,
             apiSecret=secret,
@@ -440,6 +470,7 @@ class TweekitDirectClient:
             alpha=alpha,
             bgColor=bgcolor,
             enforce_sandbox=False,
+            base_url=self._explicit_base_url,
         )
 
     async def convert_url(
@@ -460,7 +491,9 @@ class TweekitDirectClient:
         bgcolor: str = "",
         fetch_headers: dict[str, str] | None = None,
     ) -> Any:
-        key, secret = _server_mod._resolve_credentials(self.api_key, self.api_secret)
+        key, secret = _server_mod._resolve_credentials(
+            self.api_key, self.api_secret, base_url=self._explicit_base_url
+        )
         return await _server_mod._convert_url_impl(
             apiKey=key,
             apiSecret=secret,
@@ -479,11 +512,19 @@ class TweekitDirectClient:
             bgColor=bgcolor,
             fetchHeaders=fetch_headers,
             allow_auth_headers=True,
+            base_url=self._explicit_base_url,
         )
 
     async def delete_document(self, doc_id: str) -> dict[str, Any]:
-        key, secret = _server_mod._resolve_credentials(self.api_key, self.api_secret)
-        return await _server_mod._delete_document_impl(apiKey=key, apiSecret=secret, docId=doc_id)
+        key, secret = _server_mod._resolve_credentials(
+            self.api_key, self.api_secret, base_url=self._explicit_base_url
+        )
+        return await _server_mod._delete_document_impl(
+            apiKey=key,
+            apiSecret=secret,
+            docId=doc_id,
+            base_url=self._explicit_base_url,
+        )
 
 
 async def _demo() -> None:

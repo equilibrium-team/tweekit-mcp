@@ -23,12 +23,16 @@ from mcp.types import ToolAnnotations
 from pydantic import Field
 from starlette.middleware import Middleware
 
-BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
+CLOUD_BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
+LOCAL_MINER_BASE_URL = "http://127.0.0.1:16377/api/image/"
+LOCAL_MINER_KESTREL_URL = "http://127.0.0.1:5000/api/image/"
+LOCAL_MINER_MEDIAGEN_URL = "http://127.0.0.1:8088/mgen/TweekIT.ms"
+BASE_URL = os.getenv("TWEEKIT_API_BASE_URL", CLOUD_BASE_URL).rstrip("/") + "/"
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING)
 
-SERVER_VERSION = "1.8.1"
+SERVER_VERSION = "1.8.2"
 _ACTIVE_TRANSPORT = "stdio"
 
 DEFAULT_MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024  # 25 MiB remote download cap
@@ -38,6 +42,8 @@ MAX_REDIRECT_HOPS = 5
 
 _DOC_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _FORMAT_TOKEN_RE = re.compile(r"^[A-Za-z0-9]{1,16}$")
+
+_LOOPBACK_MINER_HOSTS: FrozenSet[str] = frozenset({"127.0.0.1", "::1", "localhost"})
 
 _BLOCKED_HOSTNAMES: FrozenSet[str] = frozenset({
     "localhost",
@@ -73,6 +79,12 @@ _SENSITIVE_PATH_SEGMENTS: FrozenSet[str] = frozenset({
     ".hg",
     ".svn",
     ".config",
+    ".vscode",
+    ".idea",
+    ".github",
+    ".claude",
+    ".cursor",
+    ".gemini",
     "etc",
 })
 _SENSITIVE_FILENAMES: FrozenSet[str] = frozenset({
@@ -461,11 +473,103 @@ def _extract_bearer(auth_header: Optional[str]) -> str:
     return ""
 
 
+def _is_truthy_env(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes"}
+
+
+def _is_local_only_mode() -> bool:
+    """Return True when TWEEKIT_LOCAL_ONLY=1 (zero third-party cloud egress mode)."""
+    return _is_truthy_env("TWEEKIT_LOCAL_ONLY", "0")
+
+
+def _is_local_miner_enabled() -> bool:
+    """Return True when TWEEKIT_MINER_LOCAL=1 or TWEEKIT_LOCAL_ONLY=1 routes to local Miner Renderery."""
+    return _is_truthy_env("TWEEKIT_MINER_LOCAL", "0") or _is_local_only_mode()
+
+
+def _is_miner_noauth_enabled() -> bool:
+    """Return True when TWEEKIT_MINER_NOAUTH=1 permits local NOAUTH;NODB Miner Renderery calls without cloud keys."""
+    return _is_truthy_env("TWEEKIT_MINER_NOAUTH", "0")
+
+
+def _get_allowed_onprem_hosts() -> FrozenSet[str]:
+    """Return loopback hosts plus any operator-configured TWEEKIT_ONPREM_HOSTS for on-premises Miner Renderery nodes."""
+    extra = {
+        h.strip().lower().strip("[]").rstrip(".")
+        for h in os.getenv("TWEEKIT_ONPREM_HOSTS", "").split(",")
+        if h.strip()
+    }
+    return _LOOPBACK_MINER_HOSTS | frozenset(extra)
+
+
+def _is_local_or_onprem_api_url(url: str) -> bool:
+    """Return True if `url` targets a loopback or allowlisted on-premises Miner Renderery host."""
+    parsed = urlparse((url or "").strip())
+    hostname = (parsed.hostname or "").strip().lower().strip("[]").rstrip(".")
+    if not hostname:
+        return False
+    if hostname in _get_allowed_onprem_hosts():
+        return True
+    try:
+        return ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        return False
+
+
+def _resolve_api_base_url(override_base_url: Optional[str] = None) -> str:
+    """Resolve and validate the TweekIT API or On-Premises Miner Renderery base URL."""
+    env_override = os.getenv("TWEEKIT_API_BASE_URL", "").strip()
+    if override_base_url and override_base_url.strip():
+        raw_url = override_base_url.strip()
+    elif env_override:
+        raw_url = env_override
+    elif _is_local_miner_enabled() and BASE_URL.rstrip("/") == CLOUD_BASE_URL.rstrip("/"):
+        raw_url = LOCAL_MINER_BASE_URL
+    else:
+        raw_url = BASE_URL
+
+    normalized = raw_url.rstrip("/") + "/"
+    parsed = urlparse(normalized)
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in {"https", "http"}:
+        raise ValueError("Invalid TWEEKIT_API_BASE_URL scheme: must be 'https://' or local/on-prem 'http://'.")
+    if parsed.username or parsed.password:
+        raise ValueError("TWEEKIT_API_BASE_URL must not contain embedded userinfo credentials.")
+    hostname = (parsed.hostname or "").strip()
+    if not hostname:
+        raise ValueError("TWEEKIT_API_BASE_URL is missing a valid hostname.")
+
+    is_onprem = _is_local_or_onprem_api_url(normalized)
+    if scheme == "http" and not is_onprem:
+        raise ValueError(
+            f"Plain HTTP TWEEKIT_API_BASE_URL ('{hostname}') is only permitted for localhost "
+            "(127.0.0.1 / ::1 / localhost) or hosts explicitly listed in TWEEKIT_ONPREM_HOSTS."
+        )
+    if _is_local_only_mode() and not is_onprem:
+        raise ValueError(
+            f"TWEEKIT_LOCAL_ONLY=1 requires a localhost or TWEEKIT_ONPREM_HOSTS Miner Renderery endpoint "
+            f"(got external host '{hostname}'); third-party cloud egress is disabled."
+        )
+    return normalized
+
+
+def _assert_outbound_internet_allowed(tool_name: str) -> None:
+    """Block outbound internet tools (`convert_url`, `fetch`, `search`) in air-gapped TWEEKIT_LOCAL_ONLY=1 mode."""
+    if _is_local_only_mode() and not _is_truthy_env("TWEEKIT_ALLOW_REMOTE_FETCH_IN_LOCAL_ONLY", "0"):
+        raise ValueError(
+            f"Tool '{tool_name}' is disabled when TWEEKIT_LOCAL_ONLY=1 (air-gapped on-premises Miner Renderery mode). "
+            "Set TWEEKIT_ALLOW_REMOTE_FETCH_IN_LOCAL_ONLY=1 to permit outbound HTTPS requests."
+        )
+
+
 def _resolve_credentials(
     provided_key: Optional[str] = None,
     provided_secret: Optional[str] = None,
+    *,
+    base_url: Optional[str] = None,
 ) -> tuple[str, str]:
-    """Resolve TweekIT API credentials from SDK args, atomic HTTP header pairs, or stdio env vars."""
+    """Resolve TweekIT API credentials from SDK args, atomic HTTP header pairs, stdio env vars, or local NOAUTH Miner."""
+    is_http = _ACTIVE_TRANSPORT == "streamable-http" or _has_active_http_request()
     if provided_key is not None or provided_secret is not None:
         api_key = (provided_key or os.getenv("TWEEKIT_API_KEY") or "").strip()
         api_secret = (provided_secret or os.getenv("TWEEKIT_API_SECRET") or "").strip()
@@ -491,12 +595,7 @@ def _resolve_credentials(
                 )
             return header_key, header_secret
 
-        is_http = _ACTIVE_TRANSPORT == "streamable-http" or _has_active_http_request()
-        allow_http_env = os.getenv("TWEEKIT_ALLOW_ENV_CREDENTIALS_OVER_HTTP", "0").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-        }
+        allow_http_env = _is_truthy_env("TWEEKIT_ALLOW_ENV_CREDENTIALS_OVER_HTTP", "0")
         if is_http and not allow_http_env:
             raise RuntimeError(
                 "Missing TweekIT HTTP header credentials: supply both ApiKey and ApiSecret headers."
@@ -504,6 +603,11 @@ def _resolve_credentials(
 
         api_key = (os.getenv("TWEEKIT_API_KEY") or "").strip()
         api_secret = (os.getenv("TWEEKIT_API_SECRET") or "").strip()
+
+    if not api_key and not api_secret and _is_miner_noauth_enabled() and not is_http:
+        resolved_base = _resolve_api_base_url(base_url)
+        if _is_local_or_onprem_api_url(resolved_base):
+            return "local-miner", "local-miner"
 
     missing = []
     if not api_key:
@@ -513,7 +617,8 @@ def _resolve_credentials(
     if missing:
         raise RuntimeError(
             f"Missing TweekIT credentials ({', '.join(missing)}). "
-            "Configure TWEEKIT_API_KEY/TWEEKIT_API_SECRET in environment variables or HTTP ApiKey/ApiSecret headers."
+            "Configure TWEEKIT_API_KEY/TWEEKIT_API_SECRET in environment variables or HTTP ApiKey/ApiSecret headers "
+            "(or set TWEEKIT_MINER_NOAUTH=1 when targeting a local NOAUTH Miner Renderery)."
         )
     return api_key, api_secret
 
@@ -907,7 +1012,11 @@ def _extract_error_details(response: Optional[httpx.Response]) -> str:
     hints = {
         k: v
         for k, v in (response.headers or {}).items()
-        if k.lower().startswith("x-mediagen") or k.lower().startswith("x-tweekit")
+        if (
+            k.lower().startswith("x-mediagen")
+            or k.lower().startswith("x-tweekit")
+            or k.lower().startswith("x-cpucoinminer")
+        )
     }
 
     try:
@@ -927,10 +1036,13 @@ def _extract_error_details(response: Optional[httpx.Response]) -> str:
     return text
 
 
-@mcp.resource("config://tweekit-version")
-async def version() -> str:
-    """Get current version of the TweekIT API."""
-    url = f"{BASE_URL}version"
+async def _version_impl(*, base_url: Optional[str] = None) -> str:
+    """Resolve and probe the current version of the TweekIT API or On-Premises Miner Renderery."""
+    try:
+        target_base_url = _resolve_api_base_url(base_url)
+    except ValueError as exc:
+        return f"unavailable (configuration error: {exc})"
+    url = f"{target_base_url}version"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url)
@@ -949,15 +1061,58 @@ async def version() -> str:
         return "unavailable (unexpected error)"
 
 
+@mcp.resource("config://tweekit-version")
+async def version() -> str:
+    """Get current version of the TweekIT API or On-Premises Miner Renderery."""
+    return await _version_impl()
+
+
 @mcp.resource("config://tweekit-mcp-version")
 async def mcp_version() -> str:
     """Return the TweekIT MCP server version."""
     return SERVER_VERSION
 
 
-async def _doctype_impl(apiKey: str, apiSecret: str, extension: str = "*") -> Dict[str, Any]:
+@mcp.resource("config://tweekit-runtime-mode")
+async def runtime_mode() -> str:
+    """Return JSON runtime introspection describing Cloud CGN vs. On-Premises Miner Renderery mode."""
+    try:
+        target_base_url = _resolve_api_base_url()
+        is_onprem = _is_local_or_onprem_api_url(target_base_url)
+    except ValueError as exc:
+        return json.dumps(
+            {
+                "server_version": SERVER_VERSION,
+                "transport": _ACTIVE_TRANSPORT,
+                "error": str(exc),
+            }
+        )
+    return json.dumps(
+        {
+            "server_version": SERVER_VERSION,
+            "transport": _ACTIVE_TRANSPORT,
+            "execution_mode": "onprem-miner-renderery" if is_onprem else "cloud-cgn",
+            "api_base_url": target_base_url,
+            "local_only_zero_egress": _is_local_only_mode(),
+            "local_files_enabled": _is_local_files_enabled(),
+            "miner_noauth_loopback": _is_miner_noauth_enabled(),
+        }
+    )
+
+
+async def _doctype_impl(
+    apiKey: str,
+    apiSecret: str,
+    extension: str = "*",
+    *,
+    base_url: Optional[str] = None,
+) -> Dict[str, Any]:
     cleaned_ext = "*" if (extension or "").strip() in {"", "*"} else _validate_format_token(extension, "extension")
-    url = f"{BASE_URL}doctype"
+    try:
+        target_base_url = _resolve_api_base_url(base_url)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    url = f"{target_base_url}doctype"
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.get(
@@ -1037,17 +1192,19 @@ async def _convert_impl(
     page: int = 1,
     alpha: bool = True,
     bgColor: str = "",
+    *,
+    base_url: Optional[str] = None,
 ) -> Any:
     try:
         safe_inext = _validate_format_token(inext, "inext")
         safe_outfmt = _validate_format_token(outfmt, "outfmt")
+        url = _resolve_api_base_url(base_url)
     except ValueError as exc:
         return {"error": str(exc)}
 
     if not blob or len(blob) > DEFAULT_MAX_BLOB_CHARS:
         return {"error": "Invalid or oversized base64 payload (`blob`)."}
 
-    url = BASE_URL
     bg = 0
     if bgColor:
         hexstr = bgColor.lstrip("#")
@@ -1147,14 +1304,15 @@ async def convert(
     alpha: Annotated[bool, Field(description="Preserve alpha transparency when producing raster formats.")] = True,
     bgColor: Annotated[str, Field(description="Background color (hex RGB) to composite behind transparent pixels.")] = "",
 ) -> Any:
-    """Convert a base64-encoded document payload with TweekIT.
+    """Convert a base64-encoded document payload with TweekIT (Cloud CGN or On-Premises Miner Renderery).
 
     Credentials are read securely from `TWEEKIT_API_KEY` / `TWEEKIT_API_SECRET` environment
-    variables or HTTP `ApiKey` / `ApiSecret` headers. Never pass secrets in prompts.
+    variables or HTTP `ApiKey` / `ApiSecret` headers. Set `TWEEKIT_API_BASE_URL=http://127.0.0.1:16377/api/image/`
+    and `TWEEKIT_LOCAL_ONLY=1` for air-gapped localhost Miner Renderery processing.
     """
     try:
         key, secret = _resolve_credentials()
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         return {"error": str(exc)}
 
     return await _convert_impl(
@@ -1195,9 +1353,11 @@ async def _convert_url_impl(
     fetchHeaders: Optional[Dict[str, str]] = None,
     *,
     allow_auth_headers: bool = False,
+    base_url: Optional[str] = None,
 ) -> Any:
     """Download a validated public HTTPS document (with connect-time IP pinning) and convert it via TweekIT."""
     try:
+        _assert_outbound_internet_allowed("convert_url")
         raw_bytes, content_type, _, final_url = await _safe_fetch_remote(
             url,
             fetch_headers=fetchHeaders,
@@ -1244,6 +1404,7 @@ async def _convert_url_impl(
         page=page,
         alpha=alpha,
         bgColor=bgColor,
+        base_url=base_url,
     )
 
 
@@ -1282,8 +1443,9 @@ async def convert_url(
 ) -> Any:
     """Download a public HTTPS file (with connect-time IP pinning, redirect, and size limits) and convert via TweekIT."""
     try:
+        _assert_outbound_internet_allowed("convert_url")
         key, secret = _resolve_credentials()
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         return {"error": str(exc)}
 
     return await _convert_url_impl(
@@ -1326,19 +1488,34 @@ async def _convert_file_impl(
     bgColor: str = "",
     *,
     enforce_sandbox: bool = True,
+    base_url: Optional[str] = None,
 ) -> Any:
-    """Convert a local file on disk with opt-in workspace confinement and `O_NOFOLLOW` overwrite protection."""
+    """Convert a local file on disk with opt-in workspace confinement, `O_NOFOLLOW` protection, and optional localhost-only Miner Renderery routing."""
     resolved_dest: Optional[Path] = None
     allow_overwrite = not enforce_sandbox
+    try:
+        target_base_url = _resolve_api_base_url(base_url)
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    if _is_truthy_env("TWEEKIT_REQUIRE_LOCAL_MINER_FOR_FILES", "0") and not _is_local_or_onprem_api_url(target_base_url):
+        return {
+            "error": (
+                "TWEEKIT_REQUIRE_LOCAL_MINER_FOR_FILES=1 requires a localhost or TWEEKIT_ONPREM_HOSTS Miner Renderery "
+                "endpoint (e.g. TWEEKIT_API_BASE_URL=http://127.0.0.1:16377/api/image/) so local files never leave the host."
+            )
+        }
+
     if enforce_sandbox:
         if not _is_local_files_enabled():
             return {
                 "error": (
                     "Local filesystem conversion is disabled by default for security. "
-                    "Set TWEEKIT_ALLOW_LOCAL_FILES=1 and TWEEKIT_ALLOWED_DIRS=<workspace> on local stdio servers to opt in."
+                    "Set TWEEKIT_ALLOW_LOCAL_FILES=1 and TWEEKIT_ALLOWED_DIRS=<workspace> on local stdio servers to opt in "
+                    "(and optionally TWEEKIT_LOCAL_ONLY=1 with a localhost Miner Renderery for zero cloud egress)."
                 )
             }
-        allow_overwrite = os.getenv("TWEEKIT_ALLOW_OVERWRITE", "0").strip().lower() in {"1", "true", "yes"}
+        allow_overwrite = _is_truthy_env("TWEEKIT_ALLOW_OVERWRITE", "0")
         try:
             allowed_dirs = _get_allowed_local_dirs()
             src = _validate_local_read_path(file_path, allowed_dirs)
@@ -1389,6 +1566,7 @@ async def _convert_file_impl(
         page=page,
         alpha=alpha,
         bgColor=bgColor,
+        base_url=target_base_url,
     )
 
     if resolved_dest is not None and isinstance(result, (Image, File)) and getattr(result, "data", None) is not None:
@@ -1401,6 +1579,7 @@ async def _convert_file_impl(
                 "input_extension": resolved_inext,
                 "output_format": getattr(result, "format", outfmt),
                 "size_bytes": len(result.data),  # type: ignore[arg-type]
+                "execution_mode": "onprem-miner-renderery" if _is_local_or_onprem_api_url(target_base_url) else "cloud-cgn",
             }
         except FileExistsError:
             return {
@@ -1446,6 +1625,8 @@ async def convert_file(
 
     Disabled by default and over HTTP, strictly confined to `TWEEKIT_ALLOWED_DIRS` with symlink
     rejection (`lstat` + `O_NOFOLLOW`), dotfile/credential blocking, and non-overwrite protection.
+    For zero cloud egress, set `TWEEKIT_LOCAL_ONLY=1` (or `TWEEKIT_REQUIRE_LOCAL_MINER_FOR_FILES=1`)
+    with an On-Premises Miner Renderery (`TWEEKIT_API_BASE_URL=http://127.0.0.1:16377/api/image/`).
     """
     if not _is_local_files_enabled():
         return {
@@ -1457,7 +1638,7 @@ async def convert_file(
 
     try:
         key, secret = _resolve_credentials()
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         return {"error": str(exc)}
 
     return await _convert_file_impl(
@@ -1481,9 +1662,19 @@ async def convert_file(
     )
 
 
-async def _delete_document_impl(apiKey: str, apiSecret: str, docId: str) -> Dict[str, Any]:
+async def _delete_document_impl(
+    apiKey: str,
+    apiSecret: str,
+    docId: str,
+    *,
+    base_url: Optional[str] = None,
+) -> Dict[str, Any]:
     safe_doc_id = _validate_doc_id(docId)
-    url = f"{BASE_URL}{quote(safe_doc_id, safe='')}"
+    try:
+        target_base_url = _resolve_api_base_url(base_url)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    url = f"{target_base_url}{quote(safe_doc_id, safe='')}"
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             response = await client.delete(url, headers={"ApiKey": apiKey, "ApiSecret": apiSecret})
@@ -1536,6 +1727,7 @@ async def fetch(
 ) -> Any:
     """Fetch a public HTTPS URL (with connect-time IP pinning, redirect, and size limits) and return content."""
     try:
+        _assert_outbound_internet_allowed("fetch")
         raw_bytes, content_type, status_code, final_url = await _safe_fetch_remote(url)
     except ValueError as exc:
         return {"error": str(exc)}
@@ -1576,6 +1768,11 @@ async def search(
     max_results: Annotated[int, Field(description="Maximum number of results to return (1-10).")] = 5,
 ) -> Dict[str, Any]:
     """Simple web search using DuckDuckGo HTML endpoint."""
+    try:
+        _assert_outbound_internet_allowed("search")
+    except ValueError as exc:
+        return {"error": str(exc)}
+
     max_results = max(1, min(int(max_results), 10))
     q = quote_plus(query)
     url = f"https://html.duckduckgo.com/html/?q={q}"
@@ -1649,6 +1846,16 @@ def _parse_args() -> argparse.Namespace:
         default=int(os.getenv("PORT", "8080")),
         help="Port for streamable-http transport (default: 8080).",
     )
+    parser.add_argument(
+        "--api-base-url",
+        default=None,
+        help="Override TweekIT API or On-Premises Miner Renderery base URL (e.g., http://127.0.0.1:16377/api/image/).",
+    )
+    parser.add_argument(
+        "--local-miner",
+        action="store_true",
+        help="Target the local On-Premises Miner Renderery (http://127.0.0.1:16377/api/image/) and enforce TWEEKIT_LOCAL_ONLY=1.",
+    )
     return parser.parse_args()
 
 
@@ -1666,10 +1873,42 @@ async def _serve_http(host: str, port: int) -> None:
     await server_instance.serve()
 
 
+def _apply_startup_cli_flags(args: argparse.Namespace) -> str:
+    """Apply CLI flags to process environment and validate resolved API base URL.
+
+    Raises ValueError if `--local-miner` conflicts with an explicit `TWEEKIT_LOCAL_ONLY=0`
+    or `TWEEKIT_MINER_LOCAL=0` setting, or if the resulting API base URL violates
+    local-only / transport-security policies.
+    """
+    global BASE_URL
+    if getattr(args, "local_miner", False):
+        explicit_local_only = os.getenv("TWEEKIT_LOCAL_ONLY", "").strip().lower()
+        if explicit_local_only in {"0", "false", "no", "off"}:
+            raise ValueError(
+                "--local-miner conflicts with explicit TWEEKIT_LOCAL_ONLY=0; refusing to start with disabled local-only guard."
+            )
+        explicit_miner_local = os.getenv("TWEEKIT_MINER_LOCAL", "").strip().lower()
+        if explicit_miner_local in {"0", "false", "no", "off"}:
+            raise ValueError(
+                "--local-miner conflicts with explicit TWEEKIT_MINER_LOCAL=0; refusing to start with disabled local miner routing."
+            )
+        os.environ["TWEEKIT_MINER_LOCAL"] = "1"
+        os.environ["TWEEKIT_LOCAL_ONLY"] = "1"
+    if getattr(args, "api_base_url", None):
+        os.environ["TWEEKIT_API_BASE_URL"] = args.api_base_url
+    BASE_URL = _resolve_api_base_url()
+    return BASE_URL
+
+
 def main() -> None:
     global _ACTIVE_TRANSPORT
     args = _parse_args()
     _ACTIVE_TRANSPORT = args.transport
+    try:
+        _apply_startup_cli_flags(args)
+    except ValueError as exc:
+        logger.error("Invalid TweekIT startup configuration: %s", exc)
+        raise SystemExit(2) from exc
 
     if args.transport == "streamable-http":
         logger.info("TweekIT MCP server starting (HTTP) on %s:%s", args.host, args.port)

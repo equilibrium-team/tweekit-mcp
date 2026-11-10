@@ -5,7 +5,7 @@
 
 *Ingest, Preflight, and Convert Just About Any Filetype Into AI Workflows — Official Open-Source Package by **AMPS dba Equilibrium***
 
-Current version: v1.8.1
+Current version: v1.8.2
 
 > **🤖 Claude & AI Hub Users**: Tired of "unsupported file type" errors? Jump to our [Claude File Format Enabler](#solving-claudes-file-type-limitations) – a browser-based tool that converts 450+ formats (DOC, XLS, PSD, DWG, Camera RAW, etc.) into AI-compatible files in seconds, or use our built-in Python `preflight_check` and `TweekitClient` SDK directly in your pipeline.
 
@@ -65,6 +65,7 @@ The entire process happens in seconds, and your workflow never sees an incompati
 - [Quickstart](#quickstart)
 - [Authentication](#authentication)
 - [Server and Hosting](#server-and-hosting)
+- [On-Premises & Localhost Processing via Miner Renderery](#on-premises--localhost-processing-via-miner-renderery)
 - [Client Compatibility](#client-compatibility)
   - [Quickstart (Claude Desktop)](#quickstart-claude-desktop)
   - [Quickstart (ChatGPT MCP)](#quickstart-chatgpt-mcp)
@@ -252,17 +253,41 @@ The currently available resource name is 'version'. The currently available tool
 
 ### Versioning & Build Numbers
 
-The project tracks semantic versions in `major.minor.build` format (for example, `1.8.1`). Use `scripts/bump_version.py` to keep every metadata file aligned:
+The project tracks semantic versions in `major.minor.build` format (for example, `1.8.2`). Use `scripts/bump_version.py` to keep every metadata file aligned:
 
 ```bash
-# Increment just the build number (e.g., 1.8.0 -> 1.8.1)
+# Increment just the build number (e.g., 1.8.1 -> 1.8.2)
 python scripts/bump_version.py --bump-build
 
 # Set an explicit version
-python scripts/bump_version.py --set 1.8.1
+python scripts/bump_version.py --set 1.8.2
 ```
 
 The script updates `VERSION`, `pyproject.toml`, `server.py`, `server.json`, `claude/manifest.json`, `README.md`, and `uv.lock` so container builds, manifests, and docs stay synchronized.
+
+## On-Premises & Localhost Processing via Miner Renderery
+
+For regulated enterprises, confidential local workspaces, air-gapped networks, and workstations running the **New Miner Installation Initiative**, TweekIT's **Miner Renderery** (`CGNMiner` / MediaRich CORE™ + `TweekIT_API` local gateway) can be installed directly on-premises or on `localhost`.
+
+When paired with a local Miner Renderery (`http://127.0.0.1:16377/api/image/` or `http://127.0.0.1:5000/api/image/`), `tweekit-mcp` processes all 450+ document, image, CAD, RAW, and Office formats **100% on `localhost` with zero third-party cloud data egress**:
+
+```bash
+# Launch tweekit-mcp against the localhost Miner Renderery in zero-cloud-egress mode:
+TWEEKIT_ALLOW_LOCAL_FILES=1 \
+TWEEKIT_ALLOWED_DIRS=/path/to/workspace \
+TWEEKIT_MINER_NOAUTH=1 \
+tweekit-mcp --transport stdio --local-miner
+```
+
+Key environment variables for On-Premises / Localhost Miner Renderery mode:
+
+- **`TWEEKIT_API_BASE_URL`**: Override the TweekIT API endpoint (defaults to `http://127.0.0.1:16377/api/image/` when `--local-miner` or `TWEEKIT_MINER_LOCAL=1` is set; container Kestrel profile uses `http://127.0.0.1:5000/api/image/`).
+- **`TWEEKIT_LOCAL_ONLY=1`**: Enforces zero cloud egress — verifies that `TWEEKIT_API_BASE_URL` resolves strictly to `localhost` (`127.0.0.1`, `::1`, `localhost`) or an allowlisted internal node in `TWEEKIT_ONPREM_HOSTS`, and disables outbound internet tools (`convert_url`, `fetch`, `search`).
+- **`TWEEKIT_REQUIRE_LOCAL_MINER_FOR_FILES=1`**: Restricts `convert_file` so local workspace files can only be converted when connected to a localhost or on-premises Miner Renderery.
+- **`TWEEKIT_MINER_NOAUTH=1`**: Permits local `stdio` connections to a loopback `NOAUTH;NODB` Miner Renderery without requiring cloud portal API credentials.
+- **Runtime Introspection (`config://tweekit-runtime-mode`)**: MCP resource returning JSON metadata (`execution_mode`: `"onprem-miner-renderery"` vs `"cloud-cgn"`, `local_only_zero_egress`, `local_files_enabled`).
+
+See the full architecture and last-mile installation specification in [`docs/onprem-miner-renderery-spec.md`](docs/onprem-miner-renderery-spec.md) and our defense-in-depth security controls in [`SECURITY.md`](SECURITY.md).
 
 ### MCP Installation
 

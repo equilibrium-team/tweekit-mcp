@@ -2,8 +2,8 @@
   "manifest_version": "0.3",
   "name": "tweekit-mcp",
   "display_name": "TweekIT MCP Server",
-  "version": "1.8.1",
-  "description": "TweekIT MCP Server by AMPS dba Equilibrium - convert, preflight, and optimize 450+ file formats on-demand for AI Hub workflows, Claude, OpenAI, Gemini, and web pipelines.",
+  "version": "1.8.2",
+  "description": "TweekIT MCP Server by AMPS dba Equilibrium - convert, preflight, and optimize 450+ file formats on-demand via Cloud CGN or On-Premises Miner Renderery for AI Hub workflows, Claude, OpenAI, and Gemini.",
   "author": {
     "name": "AMPS dba Equilibrium & CPUcoin.io",
     "url": "https://www.equilibrium.com",

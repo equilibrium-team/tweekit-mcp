@@ -64,7 +64,27 @@ except Exception:
     def create_streamable_http_app(*args, **kwargs):  # type: ignore
         raise RuntimeError("FastMCP HTTP app not available in analysis stub")
 
-BASE_URL = "https://dapp.tweekit.io/tweekit/api/image/"
+from urllib.parse import urlparse
+
+
+def _resolve_functions_base_url() -> str:
+    raw = (os.getenv("TWEEKIT_API_BASE_URL") or "https://dapp.tweekit.io/tweekit/api/image/").strip()
+    parsed = urlparse(raw)
+    scheme = (parsed.scheme or "").lower()
+    hostname = (parsed.hostname or "").lower()
+    if scheme not in {"http", "https"} or not hostname or parsed.username or parsed.password:
+        raise ValueError(
+            "Invalid TWEEKIT_API_BASE_URL: must include http(s) scheme and hostname without embedded credentials."
+        )
+    if scheme == "http" and hostname not in {"127.0.0.1", "localhost", "::1"}:
+        raise ValueError(
+            "Plain HTTP TWEEKIT_API_BASE_URL is only permitted for loopback endpoints; "
+            "use HTTPS for remote TweekIT gateways."
+        )
+    return raw.rstrip("/") + "/"
+
+
+BASE_URL = _resolve_functions_base_url()
 _FORMAT_RE = re.compile(r"^[A-Za-z0-9]{1,16}$")
 
 initialize_app()

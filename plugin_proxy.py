@@ -35,7 +35,7 @@ DEFAULT_CSP = (
 # --- FastAPI App Setup ---
 app = FastAPI(
     title="TweekIT API Proxy",
-    version="1.8.1",
+    version="1.8.2",
     description="REST proxy exposing TweekIT MCP tools for OpenAI Apps SDK, ChatGPT Actions, and AI Hub integration.",
 )
 
