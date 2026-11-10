@@ -344,10 +344,12 @@ class TweekitDirectClient:
         base_url: str | None = None,
         *,
         local_miner: bool = False,
+        allow_remote_fetch: bool = False,
     ) -> None:
         self.api_key = api_key or os.getenv("TWEEKIT_API_KEY")
         self.api_secret = api_secret or os.getenv("TWEEKIT_API_SECRET")
         self.local_miner = local_miner
+        self.allow_remote_fetch = allow_remote_fetch
         if base_url:
             self._explicit_base_url: str | None = base_url.rstrip("/") + "/"
         elif local_miner:
@@ -513,6 +515,7 @@ class TweekitDirectClient:
             fetchHeaders=fetch_headers,
             allow_auth_headers=True,
             base_url=self._explicit_base_url,
+            allow_remote_fetch=self.allow_remote_fetch,
         )
 
     async def delete_document(self, doc_id: str) -> dict[str, Any]:

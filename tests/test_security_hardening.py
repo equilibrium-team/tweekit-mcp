@@ -541,3 +541,37 @@ def test_local_miner_cli_flag_fails_closed_on_conflicting_local_only_zero_or_clo
     import json
     server_manifest = json.loads((Path(__file__).resolve().parent.parent / "server.json").read_text())
     assert len(server_manifest["description"]) <= 100
+
+
+@pytest.mark.asyncio
+async def test_local_miner_alone_enforces_zero_egress_and_rejects_wildcard_bind(monkeypatch):
+    """Verify local_miner=True and TWEEKIT_MINER_LOCAL=1 enforce zero-egress by default and reject 0.0.0.0 wildcard URLs."""
+    from clients.python.tweekit_client import TweekitDirectClient
+
+    monkeypatch.delenv("TWEEKIT_LOCAL_ONLY", raising=False)
+    monkeypatch.delenv("TWEEKIT_MINER_LOCAL", raising=False)
+    monkeypatch.delenv("TWEEKIT_ALLOW_REMOTE_FETCH_IN_LOCAL_ONLY", raising=False)
+    monkeypatch.setenv("TWEEKIT_MINER_NOAUTH", "1")
+
+    # 1. TweekitDirectClient(local_miner=True) alone blocks convert_url by default (zero-egress guarantee)
+    async with TweekitDirectClient(local_miner=True) as direct_miner:
+        res_blocked = await direct_miner.convert_url("https://example.com/doc.pdf", outfmt="png")
+        assert isinstance(res_blocked, dict)
+        assert "error" in res_blocked
+        assert "zero-egress local Miner Renderery mode" in res_blocked["error"]
+
+    # 2. TWEEKIT_MINER_LOCAL=1 alone (without TWEEKIT_LOCAL_ONLY=1) blocks convert_url, fetch, and search
+    monkeypatch.setenv("TWEEKIT_MINER_LOCAL", "1")
+    assert server._is_local_only_mode() is True
+    res_url = await tool_fn(server.convert_url)(url="https://example.com/doc.pdf", outfmt="png")
+    res_fetch = await tool_fn(server.fetch)(url="https://example.com/doc.pdf")
+    res_search = await tool_fn(server.search)(query="tweekit")
+    assert "zero-egress local Miner Renderery mode" in res_url["error"]
+    assert "zero-egress local Miner Renderery mode" in res_fetch["error"]
+    assert "zero-egress local Miner Renderery mode" in res_search["error"]
+
+    # 3. Wildcard listener addresses (0.0.0.0 / ::) are rejected by _resolve_api_base_url and _is_local_or_onprem_api_url
+    assert server._is_local_or_onprem_api_url("http://0.0.0.0:5000/api/image/") is False
+    assert server._is_local_or_onprem_api_url("http://[::]:5000/api/image/") is False
+    with pytest.raises(ValueError, match="Wildcard listener address"):
+        server._resolve_api_base_url("http://0.0.0.0:5000/api/image/")

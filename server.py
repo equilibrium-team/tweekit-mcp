@@ -477,14 +477,27 @@ def _is_truthy_env(name: str, default: str = "0") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes"}
 
 
-def _is_local_only_mode() -> bool:
-    """Return True when TWEEKIT_LOCAL_ONLY=1 (zero third-party cloud egress mode)."""
-    return _is_truthy_env("TWEEKIT_LOCAL_ONLY", "0")
+def _is_local_only_mode(*, base_url: Optional[str] = None) -> bool:
+    """Return True when zero-egress local Miner Renderery mode is active.
+
+    Zero-egress mode is active when `TWEEKIT_LOCAL_ONLY=1` is set, or automatically by default
+    whenever `TWEEKIT_MINER_LOCAL=1` or an explicit local/on-prem Miner Renderery `base_url`
+    (such as `TweekitDirectClient(local_miner=True)`) is active, unless `TWEEKIT_LOCAL_ONLY=0`
+    is explicitly configured.
+    """
+    raw_local_only = os.getenv("TWEEKIT_LOCAL_ONLY")
+    if raw_local_only is not None and raw_local_only.strip() != "":
+        return raw_local_only.strip().lower() in {"1", "true", "yes"}
+    if _is_truthy_env("TWEEKIT_MINER_LOCAL", "0"):
+        return True
+    if base_url and _is_local_or_onprem_api_url(base_url):
+        return True
+    return False
 
 
 def _is_local_miner_enabled() -> bool:
     """Return True when TWEEKIT_MINER_LOCAL=1 or TWEEKIT_LOCAL_ONLY=1 routes to local Miner Renderery."""
-    return _is_truthy_env("TWEEKIT_MINER_LOCAL", "0") or _is_local_only_mode()
+    return _is_truthy_env("TWEEKIT_MINER_LOCAL", "0") or _is_truthy_env("TWEEKIT_LOCAL_ONLY", "0")
 
 
 def _is_miner_noauth_enabled() -> bool:
@@ -497,7 +510,7 @@ def _get_allowed_onprem_hosts() -> FrozenSet[str]:
     extra = {
         h.strip().lower().strip("[]").rstrip(".")
         for h in os.getenv("TWEEKIT_ONPREM_HOSTS", "").split(",")
-        if h.strip()
+        if h.strip() and h.strip().lower().strip("[]") not in {"0.0.0.0", "::"}
     }
     return _LOOPBACK_MINER_HOSTS | frozenset(extra)
 
@@ -506,7 +519,7 @@ def _is_local_or_onprem_api_url(url: str) -> bool:
     """Return True if `url` targets a loopback or allowlisted on-premises Miner Renderery host."""
     parsed = urlparse((url or "").strip())
     hostname = (parsed.hostname or "").strip().lower().strip("[]").rstrip(".")
-    if not hostname:
+    if not hostname or hostname in {"0.0.0.0", "::"}:
         return False
     if hostname in _get_allowed_onprem_hosts():
         return True
@@ -538,6 +551,11 @@ def _resolve_api_base_url(override_base_url: Optional[str] = None) -> str:
     hostname = (parsed.hostname or "").strip()
     if not hostname:
         raise ValueError("TWEEKIT_API_BASE_URL is missing a valid hostname.")
+    if hostname.lower().strip("[]") in {"0.0.0.0", "::"}:
+        raise ValueError(
+            f"Wildcard listener address '{hostname}' is not a valid client target and must not be used for "
+            "unauthenticated NOAUTH Miner Renderery endpoints; bind and connect via loopback (127.0.0.1 / ::1)."
+        )
 
     is_onprem = _is_local_or_onprem_api_url(normalized)
     if scheme == "http" and not is_onprem:
@@ -547,17 +565,25 @@ def _resolve_api_base_url(override_base_url: Optional[str] = None) -> str:
         )
     if _is_local_only_mode() and not is_onprem:
         raise ValueError(
-            f"TWEEKIT_LOCAL_ONLY=1 requires a localhost or TWEEKIT_ONPREM_HOSTS Miner Renderery endpoint "
+            f"TWEEKIT_LOCAL_ONLY=1 / TWEEKIT_MINER_LOCAL=1 requires a localhost or TWEEKIT_ONPREM_HOSTS Miner Renderery endpoint "
             f"(got external host '{hostname}'); third-party cloud egress is disabled."
         )
     return normalized
 
 
-def _assert_outbound_internet_allowed(tool_name: str) -> None:
-    """Block outbound internet tools (`convert_url`, `fetch`, `search`) in air-gapped TWEEKIT_LOCAL_ONLY=1 mode."""
-    if _is_local_only_mode() and not _is_truthy_env("TWEEKIT_ALLOW_REMOTE_FETCH_IN_LOCAL_ONLY", "0"):
+def _assert_outbound_internet_allowed(
+    tool_name: str,
+    *,
+    base_url: Optional[str] = None,
+    allow_remote_fetch_override: bool = False,
+) -> None:
+    """Block outbound internet tools (`convert_url`, `fetch`, `search`) in zero-egress local Miner Renderery mode."""
+    if allow_remote_fetch_override or _is_truthy_env("TWEEKIT_ALLOW_REMOTE_FETCH_IN_LOCAL_ONLY", "0"):
+        return
+    if _is_local_only_mode(base_url=base_url):
         raise ValueError(
-            f"Tool '{tool_name}' is disabled when TWEEKIT_LOCAL_ONLY=1 (air-gapped on-premises Miner Renderery mode). "
+            f"Tool '{tool_name}' is disabled in zero-egress local Miner Renderery mode "
+            "(TWEEKIT_LOCAL_ONLY=1 / TWEEKIT_MINER_LOCAL=1 / local_miner=True). "
             "Set TWEEKIT_ALLOW_REMOTE_FETCH_IN_LOCAL_ONLY=1 to permit outbound HTTPS requests."
         )
 
@@ -1354,10 +1380,15 @@ async def _convert_url_impl(
     *,
     allow_auth_headers: bool = False,
     base_url: Optional[str] = None,
+    allow_remote_fetch: bool = False,
 ) -> Any:
     """Download a validated public HTTPS document (with connect-time IP pinning) and convert it via TweekIT."""
     try:
-        _assert_outbound_internet_allowed("convert_url")
+        _assert_outbound_internet_allowed(
+            "convert_url",
+            base_url=base_url,
+            allow_remote_fetch_override=allow_remote_fetch,
+        )
         raw_bytes, content_type, _, final_url = await _safe_fetch_remote(
             url,
             fetch_headers=fetchHeaders,
