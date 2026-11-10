@@ -5,7 +5,7 @@ LABEL io.modelcontextprotocol.server.name="io.github.equilibrium-team/tweekit"
 LABEL org.opencontainers.image.title="TweekIT MCP Server"
 LABEL org.opencontainers.image.description="Normalize, preflight, and convert 450+ file types for AI workflows via TweekIT MCP (AMPS dba Equilibrium)."
 LABEL org.opencontainers.image.vendor="AMPS dba Equilibrium"
-LABEL org.opencontainers.image.version="1.8.2"
+LABEL org.opencontainers.image.version="1.8.3"
 LABEL org.opencontainers.image.source="https://github.com/equilibrium-team/tweekit-mcp"
 LABEL org.opencontainers.image.licenses="MIT"
 

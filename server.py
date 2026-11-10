@@ -32,7 +32,7 @@ BASE_URL = os.getenv("TWEEKIT_API_BASE_URL", CLOUD_BASE_URL).rstrip("/") + "/"
 logger = logging.getLogger(__name__)
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.WARNING)
 
-SERVER_VERSION = "1.8.2"
+SERVER_VERSION = "1.8.3"
 _ACTIVE_TRANSPORT = "stdio"
 
 DEFAULT_MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024  # 25 MiB remote download cap

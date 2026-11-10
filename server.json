@@ -3,7 +3,7 @@
   "name": "io.github.equilibrium-team/tweekit",
   "title": "TweekIT MCP Server",
   "description": "Preflight and convert 450+ file types for AI via TweekIT MCP & SDK (Cloud CGN or On-Prem Miner).",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "websiteUrl": "https://www.tweekit.io/",
   "repository": {
     "source": "github",
@@ -15,7 +15,7 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "tweekit",
-      "version": "1.8.2",
+      "version": "1.8.3",
       "runtimeHint": "uvx",
       "packageArguments": [
         {

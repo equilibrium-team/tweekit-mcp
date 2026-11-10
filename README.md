@@ -5,7 +5,7 @@
 
 *Ingest, Preflight, and Convert Just About Any Filetype Into AI Workflows — Official Open-Source Package by **AMPS dba Equilibrium***
 
-Current version: v1.8.2
+Current version: v1.8.3
 
 > **🤖 Claude & AI Hub Users**: Tired of "unsupported file type" errors? Jump to our [Claude File Format Enabler](#solving-claudes-file-type-limitations) – a browser-based tool that converts 450+ formats (DOC, XLS, PSD, DWG, Camera RAW, etc.) into AI-compatible files in seconds, or use our built-in Python `preflight_check` and `TweekitClient` SDK directly in your pipeline.
 
@@ -253,14 +253,14 @@ The currently available resource name is 'version'. The currently available tool
 
 ### Versioning & Build Numbers
 
-The project tracks semantic versions in `major.minor.build` format (for example, `1.8.2`). Use `scripts/bump_version.py` to keep every metadata file aligned:
+The project tracks semantic versions in `major.minor.build` format (for example, `1.8.3`). Use `scripts/bump_version.py` to keep every metadata file aligned:
 
 ```bash
-# Increment just the build number (e.g., 1.8.1 -> 1.8.2)
+# Increment just the build number (e.g., 1.8.1 -> 1.8.3)
 python scripts/bump_version.py --bump-build
 
 # Set an explicit version
-python scripts/bump_version.py --set 1.8.2
+python scripts/bump_version.py --set 1.8.3
 ```
 
 The script updates `VERSION`, `pyproject.toml`, `server.py`, `server.json`, `claude/manifest.json`, `README.md`, and `uv.lock` so container builds, manifests, and docs stay synchronized.

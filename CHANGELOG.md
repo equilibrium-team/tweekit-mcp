@@ -5,6 +5,12 @@ All notable changes to the TweekIT MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.3] - 2026-11-10
+
+### Security
+- **Zero-Egress Guarantee by Default for Local Miner Mode (`local_miner=True` / `TWEEKIT_MINER_LOCAL=1`)**: `_is_local_only_mode()` and `_assert_outbound_internet_allowed()` now automatically enforce zero-cloud-egress semantics whenever `TWEEKIT_MINER_LOCAL=1` or `TweekitDirectClient(local_miner=True)` is active, blocking outbound internet tools (`convert_url`, `fetch`, `search`) by default unless `TWEEKIT_ALLOW_REMOTE_FETCH_IN_LOCAL_ONLY=1`, `TWEEKIT_LOCAL_ONLY=0`, or `TweekitDirectClient(local_miner=True, allow_remote_fetch=True)` is explicitly set.
+- **Wildcard Bind Address Rejection (`0.0.0.0` / `::`) & Loopback Kestrel Alignment**: `_resolve_api_base_url()` and `_is_local_or_onprem_api_url()` now explicitly reject `0.0.0.0` and `::` wildcard bind URLs in `TWEEKIT_API_BASE_URL` and `TWEEKIT_ONPREM_HOSTS`, paired with the `equilibrium-team/tweekit-api@6727c59` update binding `TweekIT_API/appsettings.Release_CloudMaitrix.json` to `http://127.0.0.1:5000` by default.
+
 ## [1.8.2] - 2026-11-10
 
 ### Added

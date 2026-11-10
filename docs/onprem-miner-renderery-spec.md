@@ -1,7 +1,7 @@
 # On-Premises & Localhost Miner Renderery Specification
 
 > **Document Role:** Last-Mile Integration & Architecture Specification for `tweekit-mcp` + **New Miner Installation Initiative**  
-> **Version:** `1.8.2` (`2026-11-10`)  
+> **Version:** `1.8.3` (`2026-11-10`)  
 > **Organization:** AMPS dba Equilibrium / CPUcoin Content Generation Network (CGN)  
 > **Repositories Covered:**  
 > - `equilibrium-team/tweekit-mcp` (MCP Server, Python SDK, AI Hub Preflight Router, REST Plugin Proxy)  
@@ -148,7 +148,7 @@ All requests from `tweekit-mcp` to `TWEEKIT_API_BASE_URL` use the following wire
       "command": "uvx",
       "args": [
         "--from",
-        "tweekit>=1.8.2",
+        "tweekit>=1.8.3",
         "tweekit-mcp",
         "--transport",
         "stdio",

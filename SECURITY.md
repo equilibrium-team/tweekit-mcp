@@ -4,9 +4,10 @@
 
 | Version | Supported | Notes |
 | --- | --- | --- |
-| `1.8.2` | ✅ Yes | Current release — zero-CVE supply chain (`fastmcp>=4.1.6`), connect-time DNS IP pinning, `O_NOFOLLOW` workspace sandbox, credential-free tool schemas, and On-Premises / Localhost Miner Renderery zero-egress mode (`TWEEKIT_LOCAL_ONLY=1`). |
+| `1.8.3` | ✅ Yes | Current release — enforces zero-cloud-egress by default when `local_miner=True` or `TWEEKIT_MINER_LOCAL=1`, rejects `0.0.0.0`/`::` wildcard bind URLs, zero-CVE supply chain (`fastmcp>=4.1.6`), connect-time DNS IP pinning, `O_NOFOLLOW` workspace sandbox, and credential-free tool schemas. |
+| `1.8.2` | ✅ Yes | On-Premises / Localhost Miner Renderery integration release (`--local-miner`, `TWEEKIT_LOCAL_ONLY=1`). |
 | `1.8.1` | ✅ Yes | Security hardening & `/mcp/` trailing-slash normalization release. |
-| `< 1.8.1` | ❌ No | Upgrade to `tweekit>=1.8.2` (`pip install -U tweekit`). |
+| `< 1.8.1` | ❌ No | Upgrade to `tweekit>=1.8.3` (`pip install -U tweekit`). |
 
 ## Reporting a Vulnerability
 
