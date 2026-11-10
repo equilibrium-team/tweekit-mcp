@@ -536,3 +536,8 @@ def test_local_miner_cli_flag_fails_closed_on_conflicting_local_only_zero_or_clo
     assert resolved == "http://127.0.0.1:16377/api/image/"
     assert server._is_local_only_mode() is True
     assert server._is_local_miner_enabled() is True
+
+    # 4. server.json description length must be <= 100 characters for Official MCP Registry validation
+    import json
+    server_manifest = json.loads((Path(__file__).resolve().parent.parent / "server.json").read_text())
+    assert len(server_manifest["description"]) <= 100
